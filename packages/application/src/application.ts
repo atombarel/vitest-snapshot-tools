@@ -1,6 +1,7 @@
-import { stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import {
   applyAcceptedHunks,
+  assertContainedPath,
   createEntryDiff,
   deriveDecision,
   sha256,
@@ -18,6 +19,7 @@ import type {
   EntryContentInput,
   EntryDiff,
   GetDiffInput,
+  GetTestSourceInput,
   ListNodesInput,
   ListSessionsInput,
   Page,
@@ -29,6 +31,7 @@ import type {
   SetDecisionInput,
   SnapshotApplication,
   StartRunInput,
+  TestSource,
   VerifyInput,
 } from "@vsnap/protocol";
 import { VsnapError } from "@vsnap/protocol";
@@ -44,6 +47,7 @@ import type {
 } from "@vsnap/session";
 import { readOverlay, SessionStore, writeOverlay } from "@vsnap/session";
 import { applyFilesystemPlan } from "./apply.js";
+import { locateTestSource } from "./source.js";
 
 export interface SnapshotApplicationOptions extends SessionStoreOptions {
   store?: SessionStore;
@@ -469,6 +473,47 @@ export function createSnapshotApplication(
               }
             : {}),
         },
+      };
+    },
+    async getTestSource(input: GetTestSourceInput): Promise<TestSource> {
+      const session = await store.load(input.sessionId);
+      const diff = await application.getDiff(input);
+      const relativePath = diff.context.test?.file;
+      if (!relativePath)
+        throw new VsnapError(
+          "TEST_SOURCE_NOT_FOUND",
+          "The owning test source file was not reported for this snapshot",
+        );
+      const requestedPath = assertContainedPath(
+        session.repositoryRoot,
+        relativePath,
+      );
+      const canonicalPath = await realpath(requestedPath).catch(() => {
+        throw new VsnapError(
+          "TEST_SOURCE_NOT_FOUND",
+          `Test source no longer exists: ${relativePath}`,
+        );
+      });
+      assertContainedPath(session.repositoryRoot, canonicalPath);
+      const sourceStats = await stat(canonicalPath);
+      if (!sourceStats.isFile())
+        throw new VsnapError(
+          "TEST_SOURCE_NOT_FOUND",
+          `Test source is not a regular file: ${relativePath}`,
+        );
+      if (sourceStats.size > 2_000_000)
+        throw new VsnapError(
+          "TEST_SOURCE_TOO_LARGE",
+          "Test source is larger than the 2 MB read-only preview limit",
+        );
+      const content = await readFile(canonicalPath, "utf8");
+      const located = locateTestSource(content, relativePath, diff.context);
+      return {
+        entryId: input.entryId,
+        relativePath,
+        content,
+        contentHash: sha256(content),
+        ...located,
       };
     },
     async setDecision(input: SetDecisionInput): Promise<DecisionResult> {

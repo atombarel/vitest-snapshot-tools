@@ -194,6 +194,20 @@ export interface EntryContent {
   content: string | null;
   hash: string | null;
 }
+export interface TestSource {
+  entryId: string;
+  relativePath: string;
+  language: "typescript" | "tsx" | "javascript" | "jsx" | "text";
+  content: string;
+  contentHash: string;
+  focus: {
+    testLine?: number;
+    matcherLine?: number;
+    matcherColumn?: number;
+    startLine: number;
+    endLine: number;
+  };
+}
 export interface EntryDiff {
   entryId: string;
   baseline: string;
@@ -259,6 +273,10 @@ export interface GetDiffInput {
   sessionId: string;
   entryId: string;
 }
+export interface GetTestSourceInput {
+  sessionId: string;
+  entryId: string;
+}
 export interface SetDecisionInput {
   sessionId: string;
   selector: string;
@@ -300,6 +318,7 @@ export interface SnapshotApplication {
   listNodes(input: ListNodesInput): Promise<Page<ReviewNode>>;
   getEntryContent(input: EntryContentInput): Promise<EntryContent>;
   getDiff(input: GetDiffInput): Promise<EntryDiff>;
+  getTestSource(input: GetTestSourceInput): Promise<TestSource>;
   setDecision(input: SetDecisionInput): Promise<DecisionResult>;
   createPreview(input: CreatePreviewInput): Promise<ApplyPlan>;
   apply(input: ApplyInput): Promise<ApplyResult>;

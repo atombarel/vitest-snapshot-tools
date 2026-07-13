@@ -8,6 +8,7 @@ import type {
   ReviewSession,
   RunEvent,
   SessionSummary,
+  TestSource,
 } from "@vsnap/protocol";
 
 let bearerToken = "";
@@ -45,6 +46,8 @@ export const api = {
     ),
   diff: (id: string, entryId: string) =>
     request<EntryDiff>(`/api/v1/sessions/${id}/entries/${entryId}`),
+  source: (id: string, entryId: string) =>
+    request<TestSource>(`/api/v1/sessions/${id}/entries/${entryId}/source`),
   decide: (
     id: string,
     selector: string,

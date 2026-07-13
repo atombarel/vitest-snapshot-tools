@@ -38,6 +38,18 @@ importers:
       '@pierre/diffs':
         specifier: ^1.2.1
         version: 1.2.12(@shikijs/themes@4.3.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@shikijs/core':
+        specifier: ^4.3.1
+        version: 4.3.1
+      '@shikijs/engine-javascript':
+        specifier: ^4.3.1
+        version: 4.3.1
+      '@shikijs/langs':
+        specifier: ^4.3.1
+        version: 4.3.1
+      '@shikijs/themes':
+        specifier: ^4.3.1
+        version: 4.3.1
       '@tanstack/react-query':
         specifier: ^5.87.1
         version: 5.101.2(react@19.2.7)

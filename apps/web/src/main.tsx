@@ -5,9 +5,21 @@ import { createRoot } from "react-dom/client";
 import { Toaster } from "sonner";
 import { consumeToken } from "./api.js";
 import { router } from "./router.js";
+import { parseThemeMode, resolveTheme } from "./theme.js";
 import "./styles.css";
 
 consumeToken();
+const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+const applyThemePreference = () => {
+  const mode = parseThemeMode(localStorage.getItem("vsnap-theme"));
+  document.documentElement.dataset.themeMode = mode;
+  document.documentElement.dataset.theme = resolveTheme(
+    mode,
+    systemTheme.matches,
+  );
+};
+applyThemePreference();
+systemTheme.addEventListener("change", applyThemePreference);
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 500, retry: 1 } },
 });

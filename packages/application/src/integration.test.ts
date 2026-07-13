@@ -53,6 +53,26 @@ describe("transactional integration", () => {
         status: "passed",
       },
     });
+    const source = await app.getTestSource({
+      sessionId: session.id,
+      entryId: entry.id,
+    });
+    expect(source).toMatchObject({
+      relativePath: "src/value.test.ts",
+      language: "typescript",
+      focus: { testLine: 3, matcherLine: 5 },
+    });
+    expect(source.content).toContain("toMatchSnapshot()");
+    const unsafeIndex = await store.readIndex(session);
+    const sourceFile = unsafeIndex.files[0];
+    if (!sourceFile) throw new Error("Expected indexed snapshot file");
+    sourceFile.testFile = "../../outside.test.ts";
+    await store.writeIndex(session, unsafeIndex);
+    await expect(
+      app.getTestSource({ sessionId: session.id, entryId: entry.id }),
+    ).rejects.toMatchObject({ code: "UNSAFE_PATH" });
+    sourceFile.testFile = "src/value.test.ts";
+    await store.writeIndex(session, unsafeIndex);
     await app.setDecision({
       sessionId: session.id,
       selector: entry.id,

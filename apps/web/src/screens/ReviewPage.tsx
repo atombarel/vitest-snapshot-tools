@@ -8,8 +8,11 @@ import {
   Check,
   ChevronDown,
   CircleDot,
+  Code2,
   Columns2,
   FileCode2,
+  GitCompareArrows,
+  Monitor,
   Moon,
   Play,
   RotateCcw,
@@ -18,12 +21,19 @@ import {
   Sun,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api, subscribeEvents } from "../api.js";
 import { inferSnapshotLanguage } from "../diff-language.js";
 import { matcherInvocation } from "../snapshot-context.js";
 import { liveStore, reduceEvent } from "../store.js";
+import { nextThemeMode, parseThemeMode, resolveTheme } from "../theme.js";
+
+const SourceCodeView = lazy(() =>
+  import("../components/SourceCodeView.js").then((module) => ({
+    default: module.SourceCodeView,
+  })),
+);
 
 export function ReviewPage() {
   const params = useParams({ strict: false }) as {
@@ -34,9 +44,14 @@ export function ReviewPage() {
   const [selected, setSelected] = useState(params.entryId);
   const [filter, setFilter] = useState("");
   const [status, setStatus] = useState<string>();
-  const [theme, setTheme] = useState(
-    localStorage.getItem("vsnap-theme") ?? "system",
+  const [themeMode, setThemeMode] = useState(() =>
+    parseThemeMode(localStorage.getItem("vsnap-theme")),
   );
+  const [systemPrefersDark, setSystemPrefersDark] = useState(
+    () => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false,
+  );
+  const resolvedTheme = resolveTheme(themeMode, systemPrefersDark);
+  const [view, setView] = useState<"diff" | "source">("diff");
   const [layout, setLayout] = useState<"split" | "unified">("split");
   const session = useQuery({
     queryKey: ["session", params.sessionId],
@@ -53,6 +68,12 @@ export function ReviewPage() {
     queryFn: () => api.diff(params.sessionId, selected as string),
     enabled: Boolean(selected),
   });
+  const source = useQuery({
+    queryKey: ["source", params.sessionId, selected],
+    queryFn: () => api.source(params.sessionId, selected as string),
+    enabled: Boolean(selected) && view === "source",
+    staleTime: 5_000,
+  });
   const live = useStore(liveStore, (value) => value);
   useEffect(() => {
     const controller = new AbortController();
@@ -65,9 +86,18 @@ export function ReviewPage() {
     return () => controller.abort();
   }, [params.sessionId]);
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem("vsnap-theme", theme);
-  }, [theme]);
+    const query = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!query) return;
+    const update = (event: MediaQueryListEvent) =>
+      setSystemPrefersDark(event.matches);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    document.documentElement.dataset.theme = resolvedTheme;
+    document.documentElement.dataset.themeMode = themeMode;
+    localStorage.setItem("vsnap-theme", themeMode);
+  }, [themeMode, resolvedTheme]);
   const list = useMemo(
     () =>
       (nodes.data?.items ?? []).filter((node) =>
@@ -199,10 +229,17 @@ export function ReviewPage() {
         <button
           type="button"
           className="icon-button"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          aria-label="Toggle theme"
+          onClick={() => setThemeMode(nextThemeMode(themeMode))}
+          aria-label={`Theme: ${themeMode}. Switch theme`}
+          title={`Theme: ${themeMode} (${resolvedTheme})`}
         >
-          {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+          {themeMode === "system" ? (
+            <Monitor size={16} />
+          ) : themeMode === "dark" ? (
+            <Moon size={16} />
+          ) : (
+            <Sun size={16} />
+          )}
         </button>
         {active ? (
           <button
@@ -265,7 +302,7 @@ export function ReviewPage() {
                   <button
                     type="button"
                     key={node.id}
-                    className={`tree-row ${selected === node.id ? "active" : ""}`}
+                    className={`tree-row ${node.decision} ${node.changeType ?? ""} ${selected === node.id ? "active" : ""}`}
                     style={{ transform: `translateY(${row.start}px)` }}
                     onClick={() => setSelected(node.id)}
                   >
@@ -297,21 +334,43 @@ export function ReviewPage() {
                   "Choose a snapshot change"}
               </h1>
             </div>
-            <div className="segmented">
-              <button
-                type="button"
-                className={layout === "split" ? "selected" : ""}
-                onClick={() => setLayout("split")}
-              >
-                <Columns2 size={14} /> Split
-              </button>
-              <button
-                type="button"
-                className={layout === "unified" ? "selected" : ""}
-                onClick={() => setLayout("unified")}
-              >
-                Unified
-              </button>
+            <div className="toolbar-actions">
+              <fieldset className="segmented view-switcher">
+                <legend className="sr-only">Review view</legend>
+                <button
+                  type="button"
+                  className={view === "diff" ? "selected" : ""}
+                  onClick={() => setView("diff")}
+                >
+                  <GitCompareArrows size={14} /> Snapshot diff
+                </button>
+                <button
+                  type="button"
+                  className={view === "source" ? "selected" : ""}
+                  onClick={() => setView("source")}
+                  disabled={!diff.data?.context.test?.file}
+                >
+                  <Code2 size={14} /> Test source
+                </button>
+              </fieldset>
+              {view === "diff" ? (
+                <div className="segmented">
+                  <button
+                    type="button"
+                    className={layout === "split" ? "selected" : ""}
+                    onClick={() => setLayout("split")}
+                  >
+                    <Columns2 size={14} /> Split
+                  </button>
+                  <button
+                    type="button"
+                    className={layout === "unified" ? "selected" : ""}
+                    onClick={() => setLayout("unified")}
+                  >
+                    Unified
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
           {diff.data ? (
@@ -325,9 +384,16 @@ export function ReviewPage() {
               </div>
               <div className="test-owner">
                 <span className="kicker">Owning test</span>
-                <strong>
-                  {diff.data.context.test?.name ?? "Test name unavailable"}
-                </strong>
+                <div className="test-owner-title">
+                  <strong>
+                    {diff.data.context.test?.name ?? "Test name unavailable"}
+                  </strong>
+                  {diff.data.context.test?.file ? (
+                    <button type="button" onClick={() => setView("source")}>
+                      <Code2 size={12} /> View code
+                    </button>
+                  ) : null}
+                </div>
                 <span className="source-location">
                   <FileCode2 size={12} />
                   {diff.data.context.test?.file ?? "Unknown source file"}
@@ -355,12 +421,41 @@ export function ReviewPage() {
             </section>
           ) : null}
           <div className="diff-scroll">
-            {fileDiff ? (
+            {view === "source" && source.data ? (
+              <Suspense
+                fallback={
+                  <div className="diff-empty">
+                    <Code2 size={36} />
+                    <strong>Loading source viewer…</strong>
+                  </div>
+                }
+              >
+                <SourceCodeView source={source.data} theme={resolvedTheme} />
+              </Suspense>
+            ) : view === "source" && source.isError ? (
+              <div className="diff-empty source-error">
+                <FileCode2 size={36} />
+                <strong>Test source unavailable</strong>
+                <span>{source.error.message}</span>
+                <button
+                  type="button"
+                  className="button subtle"
+                  onClick={() => setView("diff")}
+                >
+                  Return to snapshot diff
+                </button>
+              </div>
+            ) : view === "source" ? (
+              <div className="diff-empty">
+                <Code2 size={36} />
+                <strong>Loading test source…</strong>
+              </div>
+            ) : fileDiff ? (
               <FileDiff
                 fileDiff={fileDiff}
                 options={{
                   diffStyle: layout,
-                  theme: { dark: "github-dark", light: "github-light" },
+                  theme: { dark: "one-dark-pro", light: "github-light" },
                   lineDiffType:
                     diff.data &&
                     Math.max(
