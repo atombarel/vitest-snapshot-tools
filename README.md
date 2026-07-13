@@ -4,7 +4,7 @@
 
 ## Development
 
-Requirements: Node.js `>=20.19` and Corepack.
+Requirements: macOS or Linux, Node.js `>=20.19`, and Corepack.
 
 ```sh
 corepack enable
