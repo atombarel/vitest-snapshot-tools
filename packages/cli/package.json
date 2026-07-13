@@ -1,0 +1,29 @@
+{
+  "name": "@vsnap/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsdown --dts --sourcemap",
+    "test": "vitest run --passWithNoTests",
+    "lint": "biome check src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vsnap/application": "workspace:*",
+    "@vsnap/protocol": "workspace:*",
+    "@vsnap/server": "workspace:*",
+    "@vsnap/session": "workspace:*",
+    "citty": "^0.1.6",
+    "open": "^10.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.1",
+    "tsdown": "^0.15.4",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.10"
+  }
+}

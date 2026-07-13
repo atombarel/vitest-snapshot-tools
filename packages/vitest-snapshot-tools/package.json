@@ -1,0 +1,60 @@
+{
+  "name": "vitest-snapshot-tools",
+  "version": "0.1.0",
+  "description": "Safely capture, review, and apply Vitest snapshot updates",
+  "author": "Andrea Tombarel <andrea.tombarel@proton.me>",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "bin": {
+    "vsnap": "./dist/cli.js",
+    "vitest-snapshot-tools": "./dist/cli.js"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./core": "./dist/core.js",
+    "./runner": "./dist/runner.js",
+    "./server": "./dist/server.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "web",
+    "skill",
+    "README.md",
+    "LICENSE",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsdown && node scripts/copy-assets.mjs",
+    "test": "vitest run --passWithNoTests",
+    "lint": "biome check src scripts",
+    "typecheck": "tsc --noEmit",
+    "prepack": "pnpm build"
+  },
+  "devDependencies": {
+    "@vsnap/application": "workspace:*",
+    "@vsnap/cli": "workspace:*",
+    "@vsnap/core": "workspace:*",
+    "@vsnap/protocol": "workspace:*",
+    "@vsnap/runner": "workspace:*",
+    "@vsnap/server": "workspace:*",
+    "@vsnap/session": "workspace:*",
+    "@types/node": "^24.3.1",
+    "@vsnap/web": "workspace:*",
+    "tsdown": "^0.15.4",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.10"
+  },
+  "peerDependencies": {
+    "vitest": ">=4 <5"
+  },
+  "keywords": [
+    "vitest",
+    "snapshot",
+    "review",
+    "testing"
+  ]
+}

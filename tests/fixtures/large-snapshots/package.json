@@ -1,0 +1,8 @@
+{
+  "name": "large-snapshots-fixture",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node generate.mjs"
+  }
+}

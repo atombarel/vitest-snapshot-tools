@@ -1,27 +1,48 @@
 {
-  "name": "vitest-snapshot-tools",
-  "version": "0.1.0",
-  "description": "Small utilities for working with Vitest snapshots.",
+  "name": "vitest-snapshot-tools-workspace",
+  "version": "0.0.0",
+  "private": true,
   "type": "module",
-  "exports": {
-    ".": "./src/index.js"
+  "packageManager": "pnpm@10.15.1",
+  "engines": {
+    "node": ">=20.19"
   },
-  "files": [
-    "src"
-  ],
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "check": "npm test"
+    "build": "turbo build",
+    "test": "turbo test",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "test:e2e": "playwright test",
+    "skill:validate": "node scripts/validate-skill.mjs",
+    "format": "biome format --write .",
+    "changeset": "changeset",
+    "pack:check": "pnpm --filter vitest-snapshot-tools pack"
   },
-  "keywords": [
-    "vitest",
-    "snapshot",
-    "testing",
-    "javascript"
-  ],
-  "license": "MIT",
   "devDependencies": {
-    "vitest": "^3.2.4"
-  }
+    "@arethetypeswrong/cli": "^0.18.2",
+    "@biomejs/biome": "^2.2.4",
+    "@changesets/cli": "^2.29.7",
+    "@playwright/test": "^1.55.0",
+    "publint": "^0.3.12",
+    "turbo": "^2.5.6",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.10"
+  },
+  "description": "`vitest-snapshot-tools` is a transactional Vitest 4 snapshot review tool. It runs the target project’s own Vitest installation, redirects snapshot updates to the OS cache, streams progress to a local authenticated UI, and writes repository snapshots only after explicit approval and `apply`.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atombarel/vitest-snapshot-tools.git"
+  },
+  "keywords": [],
+  "author": "Andrea Tombarel <andrea.tombarel@proton.me>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/atombarel/vitest-snapshot-tools/issues"
+  },
+  "homepage": "https://github.com/atombarel/vitest-snapshot-tools#readme"
 }

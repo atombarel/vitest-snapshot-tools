@@ -1,0 +1,8 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`captures a value 1`] = `
+{
+  "answer": 41,
+  "state": "baseline",
+}
+`;

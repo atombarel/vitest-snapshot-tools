@@ -1,0 +1,27 @@
+{
+  "name": "@vsnap/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsdown --dts --sourcemap",
+    "test": "vitest run --passWithNoTests",
+    "lint": "biome check src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vsnap/protocol": "workspace:*",
+    "acorn": "^8.15.0",
+    "diff": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.0",
+    "@types/node": "^24.3.1",
+    "tsdown": "^0.15.4",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.10"
+  }
+}

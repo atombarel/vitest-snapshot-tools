@@ -1,0 +1,14 @@
+{
+  "name": "@vitest-snapshot-tools/example-basic",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "review": "vsnap",
+    "review:headless": "vsnap run --json"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10",
+    "vitest-snapshot-tools": "workspace:*"
+  }
+}
