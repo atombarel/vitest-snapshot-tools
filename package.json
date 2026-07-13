@@ -1,0 +1,27 @@
+{
+  "name": "vitest-snapshot-tools",
+  "version": "0.1.0",
+  "description": "Small utilities for working with Vitest snapshots.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm test"
+  },
+  "keywords": [
+    "vitest",
+    "snapshot",
+    "testing",
+    "javascript"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}
