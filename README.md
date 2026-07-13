@@ -44,7 +44,7 @@ the agent-friendly CLI instead:
 
 ```sh
 pnpm --filter @vitest-snapshot-tools/example-basic review:headless
-pnpm --filter @vitest-snapshot-tools/example-basic exec vsnap list --kind entry --json
+pnpm --filter @vitest-snapshot-tools/example-basic vsnap list --kind entry --json
 ```
 
 The example snapshots are not modified during capture. They change only after

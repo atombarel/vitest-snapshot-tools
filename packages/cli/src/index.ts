@@ -162,9 +162,12 @@ export async function runCli(
         ? `${origin}/runs/${sessionId}/review#token=${encodeURIComponent(server.token)}`
         : server.url;
       try {
-        await open(url);
+        const browser = await open(url);
+        browser.once("error", () => {
+          stderr.write(`Could not open a browser. Review at ${url}\n`);
+        });
       } catch {
-        stderr.write(`Could not open a browser.\n`);
+        stderr.write(`Could not open a browser. Review at ${url}\n`);
       }
       write({ url, sessionId }, `Snapshot review UI · ${url}`);
       return 0;
