@@ -29,8 +29,10 @@ vsnap verify
 
 ## Try the example
 
-The repository includes an intentionally out-of-date Vitest project with both a
-standard `.snap` change and a `toMatchFileSnapshot` change:
+The repository includes an intentionally out-of-date Vitest project with a
+standard `.snap` change, a Markdown file snapshot, and a large paginated API
+response. The JSON response creates a substantial multi-hunk diff with syntax
+highlighting in the review UI:
 
 ```sh
 corepack enable

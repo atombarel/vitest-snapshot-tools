@@ -21,6 +21,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api, subscribeEvents } from "../api.js";
+import { inferSnapshotLanguage } from "../diff-language.js";
 import { liveStore, reduceEvent } from "../store.js";
 
 export function ReviewPage() {
@@ -80,25 +81,32 @@ export function ReviewPage() {
     estimateSize: () => 47,
     overscan: 12,
   });
-  const fileDiff = useMemo(
+  const diffLanguage = useMemo(
     () =>
       diff.data
-        ? parseDiffFromFile(
-            {
-              name: "baseline.snap",
-              contents: diff.data.baseline,
-              cacheKey: `b-${diff.data.hunks.map((h) => h.contentHash).join()}`,
-            },
-            {
-              name: "candidate.snap",
-              contents: diff.data.candidate,
-              cacheKey: `c-${diff.data.hunks.map((h) => h.contentHash).join()}`,
-            },
-            { context: 3 },
-          )
-        : null,
+        ? inferSnapshotLanguage(diff.data.baseline, diff.data.candidate)
+        : undefined,
     [diff.data],
   );
+  const fileDiff = useMemo(() => {
+    if (!diff.data) return null;
+    const extension = diffLanguage ?? "snap";
+    return parseDiffFromFile(
+      {
+        name: `baseline.${extension}`,
+        contents: diff.data.baseline,
+        ...(diffLanguage ? { lang: diffLanguage } : {}),
+        cacheKey: `b-${diff.data.hunks.map((h) => h.contentHash).join()}`,
+      },
+      {
+        name: `candidate.${extension}`,
+        contents: diff.data.candidate,
+        ...(diffLanguage ? { lang: diffLanguage } : {}),
+        cacheKey: `c-${diff.data.hunks.map((h) => h.contentHash).join()}`,
+      },
+      { context: 3 },
+    );
+  }, [diff.data, diffLanguage]);
   const decide = useMutation({
     mutationFn: ({
       selector,
@@ -279,6 +287,9 @@ export function ReviewPage() {
             <div>
               <span className="breadcrumb">
                 REVIEW / {selected?.slice(0, 14) ?? "SELECT AN ENTRY"}
+                {diffLanguage === "json" ? (
+                  <span className="language-badge">JSON</span>
+                ) : null}
               </span>
               <h1>
                 {list.find((item) => item.id === selected)?.label ??

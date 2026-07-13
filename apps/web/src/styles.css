@@ -389,9 +389,20 @@ kbd {
   padding: 10px 18px;
 }
 .breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font: 9px monospace;
   color: var(--muted);
   letter-spacing: 0.06em;
+}
+.language-badge {
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--line));
+  border-radius: 999px;
+  padding: 2px 5px;
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 .diff-toolbar h1 {
   font-size: 13px;

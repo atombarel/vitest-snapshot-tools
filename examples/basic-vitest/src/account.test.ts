@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildApiResponse } from "./api-response.js";
 
 describe("account card", () => {
   it("renders reviewable state", () => {
@@ -16,5 +17,11 @@ describe("account card", () => {
     await expect(
       "# Snapshot review\n\nStatus: ready\nApprovals: explicit\n",
     ).toMatchFileSnapshot("./fixtures/status.md");
+  });
+
+  it("captures a paginated API response", async () => {
+    await expect(
+      `${JSON.stringify(buildApiResponse(), null, 2)}\n`,
+    ).toMatchFileSnapshot("./fixtures/api-response.json");
   });
 });

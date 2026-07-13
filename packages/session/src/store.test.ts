@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -14,13 +14,17 @@ describe("SessionStore", () => {
       now: () => new Date("2026-01-01T00:00:00.000Z"),
     });
     const session = await store.create(root, ["--run"]);
-    expect((await store.load(session.id)).repositoryRoot).toBe(root);
+    expect((await store.load(session.id)).repositoryRoot).toBe(
+      await realpath(root),
+    );
     const hash = await store.writeBlob(session, "secret");
     expect(await store.readBlob(session, hash)).toBe("secret");
-    expect(
-      (await stat(join(store.sessionDirectory(session), "session.json"))).mode &
-        0o777,
-    ).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(
+        (await stat(join(store.sessionDirectory(session), "session.json")))
+          .mode & 0o777,
+      ).toBe(0o600);
+    }
   });
   it("quarantines corrupt sessions in place", async () => {
     const root = await mkdtemp(join(tmpdir(), "vsnap-repo-"));
