@@ -13,7 +13,8 @@ export async function atomicWrite(
   await secureMkdir(dirname(path));
   const temporary = `${path}.${process.pid}.${crypto.randomUUID()}.tmp`;
   await writeFile(temporary, content, { mode });
-  const handle = await open(temporary, "r");
+  // Windows requires a writable handle for FlushFileBuffers, which backs fsync.
+  const handle = await open(temporary, "r+");
   try {
     await handle.sync();
   } finally {

@@ -115,7 +115,8 @@ export async function applyFilesystemPlan(
         await writeFile(entry.temporary, content, {
           mode: operation.type === "update" ? operation.mode : 0o644,
         });
-        const handle = await open(entry.temporary, "r");
+        // Windows requires a writable handle for FlushFileBuffers/fsync.
+        const handle = await open(entry.temporary, "r+");
         try {
           await handle.sync();
         } finally {
