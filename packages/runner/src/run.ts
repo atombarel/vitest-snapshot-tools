@@ -114,6 +114,17 @@ export async function rebuildReviewIndex(
       record.baseline,
       record.candidate,
       snapshotKind(relativePath, record.baseline, record.candidate),
+      {
+        ...(record.testId ? { testId: record.testId } : {}),
+        ...(record.testFile
+          ? {
+              testFile: relative(
+                session.repositoryRoot,
+                record.testFile,
+              ).replaceAll("\\", "/"),
+            }
+          : {}),
+      },
     );
     if (indexed.entries.length === 0) continue;
     index.files.push(indexed.file);

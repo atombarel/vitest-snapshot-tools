@@ -5,7 +5,8 @@ import { sha256, stableId } from "./hash.js";
 export interface TextHunk extends DiffHunk {
   lines: string[];
 }
-export interface TextEntryDiff extends Omit<EntryDiff, "hunks"> {
+export interface TextEntryDiff
+  extends Pick<EntryDiff, "entryId" | "baseline" | "candidate"> {
   hunks: TextHunk[];
 }
 

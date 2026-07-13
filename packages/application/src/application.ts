@@ -274,6 +274,9 @@ export function createSnapshotApplication(
       const index = await store.readIndex(session);
       const decisions = await store.readDecisions(session);
       const nodes: ReviewNode[] = [];
+      const filePaths = new Map(
+        index.files.map((file) => [file.id, file.relativePath]),
+      );
       const hunksFor = (entryIds: string[]) =>
         index.hunks
           .filter((hunk) => entryIds.includes(hunk.entryId))
@@ -322,7 +325,10 @@ export function createSnapshotApplication(
             id: entry.id,
             kind: "entry",
             parentId: entry.fileId,
-            label: entry.key,
+            label:
+              entry.key === "<file>"
+                ? (filePaths.get(entry.fileId) ?? entry.key)
+                : entry.key,
             decision: deriveDecision(hunksFor([entry.id])),
             changeType: entry.changeType,
             childCount: index.hunks.filter((h) => h.entryId === entry.id)
@@ -372,11 +378,98 @@ export function createSnapshotApplication(
     },
     async getDiff(input: GetDiffInput): Promise<EntryDiff> {
       const session = await store.load(input.sessionId);
-      const entry = (await store.readIndex(session)).entries.find(
-        (value) => value.id === input.entryId,
-      );
+      const index = await store.readIndex(session);
+      const entry = index.entries.find((value) => value.id === input.entryId);
       if (!entry) throw new VsnapError("ENTRY_NOT_FOUND", input.entryId);
-      return entryDiff(session, entry);
+      const file = index.files.find((value) => value.id === entry.fileId);
+      if (!file) throw new VsnapError("FILE_NOT_FOUND", entry.fileId);
+      const events = await store.readEvents(session);
+      const finishedTests = events
+        .filter((event) => event.type === "test.finished")
+        .filter((event) => {
+          const eventId = String(event.payload.id ?? "");
+          const eventName = String(event.payload.name ?? "");
+          const eventFile = String(event.payload.file ?? "");
+          if (file.testId) return eventId === file.testId;
+          if (!entry.testName) return false;
+          const nameMatches =
+            entry.testName === eventName ||
+            entry.testName.startsWith(`${eventName} > `);
+          return nameMatches && (!file.testFile || file.testFile === eventFile);
+        })
+        .sort(
+          (left, right) =>
+            String(right.payload.name ?? "").length -
+            String(left.payload.name ?? "").length,
+        );
+      const testEvent = finishedTests[0];
+      const testName = testEvent
+        ? String(testEvent.payload.name ?? "")
+        : undefined;
+      const snapshotName =
+        file.kind === "external" && testName && entry.testName
+          ? entry.testName.slice(testName.length).replace(/^ > /, "") ||
+            undefined
+          : file.kind === "file"
+            ? file.relativePath
+            : undefined;
+      const location = testEvent?.payload.location;
+      const testLocation =
+        location &&
+        typeof location === "object" &&
+        "line" in location &&
+        "column" in location &&
+        typeof location.line === "number" &&
+        typeof location.column === "number"
+          ? { line: location.line, column: location.column }
+          : undefined;
+      const diff = await entryDiff(session, entry);
+      const hasTestContext = Boolean(
+        file.testId || file.testFile || testName || entry.testName,
+      );
+      const contextTestId =
+        file.testId ??
+        (testEvent?.payload.id ? String(testEvent.payload.id) : undefined);
+      const contextTestName = testName ?? entry.testName;
+      const contextTestFile =
+        file.testFile ??
+        (testEvent?.payload.file ? String(testEvent.payload.file) : undefined);
+      return {
+        ...diff,
+        context: {
+          snapshotFile: file.relativePath,
+          snapshotKind: file.kind,
+          snapshotKey: entry.key,
+          matcher:
+            file.kind === "file"
+              ? "toMatchFileSnapshot"
+              : file.kind === "inline-unsupported"
+                ? "toMatchInlineSnapshot"
+                : "toMatchSnapshot",
+          ...(snapshotName ? { snapshotName } : {}),
+          changeType: entry.changeType,
+          ...(entry.ordinal === undefined ? {} : { ordinal: entry.ordinal }),
+          ...(hasTestContext
+            ? {
+                test: {
+                  ...(contextTestId ? { id: contextTestId } : {}),
+                  ...(contextTestName ? { name: contextTestName } : {}),
+                  ...(contextTestFile ? { file: contextTestFile } : {}),
+                  ...(testEvent?.payload.status
+                    ? { status: String(testEvent.payload.status) }
+                    : {}),
+                  ...(typeof testEvent?.payload.durationMs === "number"
+                    ? { durationMs: testEvent.payload.durationMs }
+                    : {}),
+                  ...(testLocation ? { location: testLocation } : {}),
+                  ...(Array.isArray(testEvent?.payload.failures)
+                    ? { failureCount: testEvent.payload.failures.length }
+                    : {}),
+                },
+              }
+            : {}),
+        },
+      };
     },
     async setDecision(input: SetDecisionInput): Promise<DecisionResult> {
       const unlockedSession = await store.load(input.sessionId);

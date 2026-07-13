@@ -39,6 +39,20 @@ describe("transactional integration", () => {
     expect(entries.items).toHaveLength(1);
     const entry = entries.items[0];
     if (!entry) throw new Error("Expected one snapshot entry");
+    const diff = await app.getDiff({
+      sessionId: session.id,
+      entryId: entry.id,
+    });
+    expect(diff.context).toMatchObject({
+      matcher: "toMatchSnapshot",
+      ordinal: 1,
+      snapshotFile: "src/__snapshots__/value.test.ts.snap",
+      test: {
+        name: "captures a value",
+        file: "src/value.test.ts",
+        status: "passed",
+      },
+    });
     await app.setDecision({
       sessionId: session.id,
       selector: entry.id,

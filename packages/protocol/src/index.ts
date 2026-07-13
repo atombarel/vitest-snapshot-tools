@@ -62,6 +62,8 @@ export const SnapshotFileSchema = z.object({
   candidateHash: z.string().length(64).nullable(),
   changeType: ChangeTypeSchema,
   parseMode: z.enum(["entries", "opaque"]),
+  testId: z.string().optional(),
+  testFile: z.string().optional(),
 });
 export type SnapshotFile = z.infer<typeof SnapshotFileSchema>;
 
@@ -197,6 +199,27 @@ export interface EntryDiff {
   baseline: string;
   candidate: string;
   hunks: DiffHunk[];
+  context: {
+    snapshotFile: string;
+    snapshotKind: SnapshotKind;
+    snapshotKey: string;
+    matcher:
+      | "toMatchSnapshot"
+      | "toMatchFileSnapshot"
+      | "toMatchInlineSnapshot";
+    snapshotName?: string;
+    changeType: ChangeType;
+    ordinal?: number;
+    test?: {
+      id?: string;
+      name?: string;
+      file?: string;
+      status?: string;
+      durationMs?: number;
+      location?: { line: number; column: number };
+      failureCount?: number;
+    };
+  };
 }
 export interface SessionSummary {
   id: string;

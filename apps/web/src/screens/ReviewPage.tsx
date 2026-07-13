@@ -22,6 +22,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api, subscribeEvents } from "../api.js";
 import { inferSnapshotLanguage } from "../diff-language.js";
+import { matcherInvocation } from "../snapshot-context.js";
 import { liveStore, reduceEvent } from "../store.js";
 
 export function ReviewPage() {
@@ -313,6 +314,46 @@ export function ReviewPage() {
               </button>
             </div>
           </div>
+          {diff.data ? (
+            <section
+              className="snapshot-context"
+              aria-label="Snapshot matcher context"
+            >
+              <div className="matcher-context">
+                <span className="kicker">Individual snapshot</span>
+                <code>{matcherInvocation(diff.data.context)}</code>
+              </div>
+              <div className="test-owner">
+                <span className="kicker">Owning test</span>
+                <strong>
+                  {diff.data.context.test?.name ?? "Test name unavailable"}
+                </strong>
+                <span className="source-location">
+                  <FileCode2 size={12} />
+                  {diff.data.context.test?.file ?? "Unknown source file"}
+                  {diff.data.context.test?.location
+                    ? `:${diff.data.context.test.location.line}`
+                    : ""}
+                </span>
+              </div>
+              <div className="snapshot-provenance">
+                {diff.data.context.test?.status ? (
+                  <span
+                    className={`test-status ${diff.data.context.test.status}`}
+                  >
+                    {diff.data.context.test.status}
+                  </span>
+                ) : null}
+                {diff.data.context.test?.durationMs !== undefined ? (
+                  <span>{Math.round(diff.data.context.test.durationMs)}ms</span>
+                ) : null}
+                <span>{diff.data.context.changeType}</span>
+                <span className="snapshot-target">
+                  snapshot → {diff.data.context.snapshotFile}
+                </span>
+              </div>
+            </section>
+          ) : null}
           <div className="diff-scroll">
             {fileDiff ? (
               <FileDiff

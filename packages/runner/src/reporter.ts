@@ -39,7 +39,9 @@ export class SnapshotReporter implements Reporter {
     await this.emit("test.started", {
       id: test.id,
       moduleId: test.module.id,
+      file: test.module.relativeModuleId,
       name: test.fullName,
+      location: test.location,
     });
   }
   async onTestCaseResult(test: TestCase): Promise<void> {
@@ -48,7 +50,9 @@ export class SnapshotReporter implements Reporter {
     await this.emit("test.finished", {
       id: test.id,
       moduleId: test.module.id,
+      file: test.module.relativeModuleId,
       name: test.fullName,
+      location: test.location,
       status: result.state,
       durationMs: diagnostic?.duration ?? 0,
       failures: result.errors ?? [],

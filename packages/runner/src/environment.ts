@@ -1,6 +1,7 @@
 import { assertContainedPath } from "@vsnap/core";
 import { VsnapError } from "@vsnap/protocol";
 import { readOverlay, writeOverlay } from "@vsnap/session";
+import { TestRunner } from "vitest";
 import { VitestSnapshotEnvironment } from "vitest/runtime";
 
 function configuration(): { repositoryRoot: string; sessionDirectory: string } {
@@ -15,6 +16,11 @@ function configuration(): { repositoryRoot: string; sessionDirectory: string } {
 }
 
 export class TransactionalSnapshotEnvironment extends VitestSnapshotEnvironment {
+  private readonly provenance = new Map<
+    string,
+    { testId?: string; testFile?: string }
+  >();
+
   private validated(filepath: string): {
     filepath: string;
     sessionDirectory: string;
@@ -24,6 +30,27 @@ export class TransactionalSnapshotEnvironment extends VitestSnapshotEnvironment 
       filepath: assertContainedPath(config.repositoryRoot, filepath),
       sessionDirectory: config.sessionDirectory,
     };
+  }
+  override async resolvePath(filepath: string): Promise<string> {
+    const target = this.validated(await super.resolvePath(filepath)).filepath;
+    this.provenance.set(target, {
+      testFile: this.validated(filepath).filepath,
+    });
+    return target;
+  }
+  override async resolveRawPath(
+    testPath: string,
+    rawPath: string,
+  ): Promise<string> {
+    const target = this.validated(
+      await super.resolveRawPath(testPath, rawPath),
+    ).filepath;
+    const currentTest = TestRunner.getCurrentTest();
+    this.provenance.set(target, {
+      ...(currentTest?.id ? { testId: currentTest.id } : {}),
+      testFile: this.validated(testPath).filepath,
+    });
+    return target;
   }
   override async readSnapshotFile(filepath: string): Promise<string | null> {
     const target = this.validated(filepath);
@@ -46,6 +73,7 @@ export class TransactionalSnapshotEnvironment extends VitestSnapshotEnvironment 
         "baseline",
         target.filepath,
         baseline,
+        this.provenance.get(target.filepath),
       );
     return baseline;
   }
@@ -66,12 +94,14 @@ export class TransactionalSnapshotEnvironment extends VitestSnapshotEnvironment 
         "baseline",
         target.filepath,
         await super.readSnapshotFile(target.filepath),
+        this.provenance.get(target.filepath),
       );
     await writeOverlay(
       target.sessionDirectory,
       "candidate",
       target.filepath,
       snapshot,
+      this.provenance.get(target.filepath),
     );
   }
   override async removeSnapshotFile(filepath: string): Promise<void> {
@@ -88,12 +118,14 @@ export class TransactionalSnapshotEnvironment extends VitestSnapshotEnvironment 
         "baseline",
         target.filepath,
         await super.readSnapshotFile(target.filepath),
+        this.provenance.get(target.filepath),
       );
     await writeOverlay(
       target.sessionDirectory,
       "candidate",
       target.filepath,
       null,
+      this.provenance.get(target.filepath),
     );
   }
 }

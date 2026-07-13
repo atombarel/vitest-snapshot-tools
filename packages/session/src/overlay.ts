@@ -9,6 +9,8 @@ export interface OverlayRecord {
   path: string;
   contentFile: string;
   deleted: boolean;
+  testId?: string;
+  testFile?: string;
 }
 export function overlayKey(path: string): string {
   return sha256(path);
@@ -19,6 +21,7 @@ export async function writeOverlay(
   side: "baseline" | "candidate",
   path: string,
   content: string | null,
+  provenance?: { testId?: string; testFile?: string },
 ): Promise<void> {
   const target = join(directory, side);
   await secureMkdir(target);
@@ -32,6 +35,7 @@ export async function writeOverlay(
       path,
       contentFile,
       deleted: content === null,
+      ...provenance,
     } satisfies OverlayRecord),
   );
 }
@@ -55,13 +59,21 @@ export async function listOverlay(
   _session: ReviewSession,
   sessionDirectory: string,
 ): Promise<
-  Array<{ path: string; baseline: string | null; candidate: string | null }>
+  Array<{
+    path: string;
+    baseline: string | null;
+    candidate: string | null;
+    testId?: string;
+    testFile?: string;
+  }>
 > {
   const candidateDirectory = join(sessionDirectory, "candidate");
   const records: Array<{
     path: string;
     baseline: string | null;
     candidate: string | null;
+    testId?: string;
+    testFile?: string;
   }> = [];
   const files = await import("node:fs/promises")
     .then((fs) => fs.readdir(candidateDirectory))
@@ -84,6 +96,8 @@ export async function listOverlay(
       path: record.path,
       baseline: baseline ?? null,
       candidate: candidate ?? null,
+      ...(record.testId ? { testId: record.testId } : {}),
+      ...(record.testFile ? { testFile: record.testFile } : {}),
     });
   }
   return records;

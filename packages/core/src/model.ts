@@ -29,6 +29,7 @@ export function indexSnapshot(
   baseline: string | null,
   candidate: string | null,
   kind: "external" | "file" | "inline-unsupported" = "external",
+  provenance?: { testId?: string; testFile?: string },
 ): IndexedSnapshot {
   const fileId = snapshotFileId(relativePath);
   const baselineParsed = baseline === null ? null : parseSnapshotFile(baseline);
@@ -86,6 +87,7 @@ export function indexSnapshot(
       candidateHash: candidate === null ? null : blobHash(candidate),
       changeType: changeType(baseline ?? undefined, candidate ?? undefined),
       parseMode,
+      ...provenance,
     },
     entries,
   };
