@@ -85,6 +85,7 @@ export class SnapshotReporter implements Reporter {
     });
   }
   async onTestModuleEnd(module: TestModule): Promise<void> {
+    await this.onModuleComplete?.();
     await this.emit("module.finished", {
       ...modulePayload(module),
       durationMs: module.diagnostic().duration,
@@ -96,9 +97,6 @@ export class SnapshotReporter implements Reporter {
     errors: ReadonlyArray<unknown>,
     reason: "passed" | "interrupted" | "failed",
   ): Promise<void> {
-    // Snapshot overlays are complete at this point. Rebuilding after every
-    // module repeatedly re-indexes all previously discovered snapshots and
-    // makes larger suites quadratic in the number of modules.
     await this.onModuleComplete?.();
     await this.emit(
       reason === "interrupted"
