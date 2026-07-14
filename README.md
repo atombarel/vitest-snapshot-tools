@@ -5,8 +5,9 @@
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Vitest 4](https://img.shields.io/badge/Vitest-4.x-6E9F18.svg)](https://vitest.dev/)
 
-Review Vitest snapshot updates in a local UI, approve only the changes you
-intend to keep, and write them to the repository in one explicit step.
+Turn thousands of Vitest snapshot failures into a compact set of exact change
+families. Review a repeated change once—in the UI or through an agent-friendly
+CLI—then safely apply that decision everywhere it occurs.
 
 `vitest-snapshot-tools` runs your project's own Vitest installation and captures
 snapshot candidates in the OS cache. Snapshot files in the repository are not
@@ -14,6 +15,65 @@ changed during the run. Accepted changes reach them only when you run
 `vsnap apply` or choose **Preview & apply accepted** in the UI.
 
 ![The vitest-snapshot-tools review workspace showing test source, two snapshot diffs, and explicit review controls](docs/images/review-workspace.png)
+
+## Built for coding agents: review once, spend tokens once
+
+Snapshot updates are unusually expensive for coding agents: a one-line API
+change can fail hundreds of tests, and sending every nearly identical diff to a
+model wastes context, tool calls, and tokens. `vitest-snapshot-tools` fingerprints
+the exact added and removed lines in every hunk and groups identical fingerprints
+into **change families**.
+
+An agent can inspect one representative diff, see how many occurrences, tests,
+and files it affects, and accept or reject the entire exact family with one
+selector. A suite with 100 failures may therefore become 14 review items; a
+5,200-snapshot suite can be reduced to the distinct changes it actually contains.
+Singletons and genuine outliers remain separate, so compaction does not hide
+unique changes or rely on a model guessing that two diffs are equivalent.
+
+For the included realistic 100-test example, the agent-facing workload changes
+like this:
+
+| Work sent to the agent | Entry-by-entry review | Family-first review |
+| --- | ---: | ---: |
+| Review items | 100 | 14 |
+| Representative diffs needed | Up to 100 | Up to 14 |
+| Decisions for full coverage | Up to 100 | 14 |
+
+The exact token savings depend on diff size and the number of repeated changes,
+but repeated snapshot text no longer needs to be returned to the model for every
+test. The ten unique changes in this example still account for ten of the 14
+items; only genuinely identical work is collapsed.
+
+Install the bundled Codex-compatible skill:
+
+```sh
+npx vitest-snapshot-tools skill install
+```
+
+Then ask your agent to use `$review-vitest-snapshots`, or run the same
+token-efficient workflow directly:
+
+```sh
+# Capture outside the repository; JSON includes exactFamilies.
+npx vitest-snapshot-tools run --json -- src/account.test.ts
+
+# Start with compact families, not every individual snapshot entry.
+npx vitest-snapshot-tools families --status pending --json
+npx vitest-snapshot-tools diff entry_representative... --format json
+
+# One exact decision expands safely to every occurrence in that family.
+npx vitest-snapshot-tools accept family_...
+npx vitest-snapshot-tools preview --format patch
+npx vitest-snapshot-tools apply
+npx vitest-snapshot-tools verify
+```
+
+The skill preserves the transactional safety model: it never edits snapshots or
+cache files directly, never skips preview, and refreshes selectors after a
+revision conflict. See
+[`review-vitest-snapshots`](skills/review-vitest-snapshots/SKILL.md) for the full
+agent workflow and JSON response contract.
 
 ## Why use it?
 
@@ -146,7 +206,7 @@ scripts and agents.
 npx vitest-snapshot-tools run --json -- src/account.test.ts
 
 # Inspect the newest session for this repository
-npx vitest-snapshot-tools list --kind family --status pending
+npx vitest-snapshot-tools families --status pending
 npx vitest-snapshot-tools diff entry_... --format unified
 
 # Decide at family, entry, hunk, test, file, or entire-run scope
@@ -171,6 +231,7 @@ pass `--session <session-id>`.
 | `vsnap run -- [vitest args]` | Capture headlessly and print the session ID |
 | `vsnap sessions` | List cached review sessions for the current repository |
 | `vsnap status [session]` | Show run state, revision, and snapshot-change count |
+| `vsnap families [session]` | List exact change families with occurrence, test, and file counts; filter with `--status` |
 | `vsnap list [session]` | List family, file, test, entry, or hunk selectors; filter with `--kind` and `--status` |
 | `vsnap diff <entry>` | Print an entry as a unified diff or summary |
 | `vsnap accept <selector>` | Accept a family, file, test, entry, hunk, or `--all` |
@@ -212,19 +273,6 @@ The current version intentionally supports a narrow, predictable workflow:
 - No custom `snapshotEnvironment`
 - Inline snapshot changes are detected and reported, but cannot be applied
 - One active capture per process
-
-## Agent integration
-
-The package includes a `review-vitest-snapshots` skill for Codex-compatible agent
-workflows:
-
-```sh
-npx vitest-snapshot-tools skill install
-```
-
-The skill uses the JSON CLI rather than bypassing the decision and apply model.
-See [`skills/review-vitest-snapshots`](skills/review-vitest-snapshots/SKILL.md)
-for its workflow and response contract.
 
 ## Contributing
 

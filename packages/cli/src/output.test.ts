@@ -1,5 +1,6 @@
 import { VsnapError } from "@vsnap/protocol";
 import { describe, expect, it } from "vitest";
+import { formatFamilyNode } from "./index.js";
 import { envelope, errorEnvelope, exitCode } from "./output.js";
 
 describe("CLI envelopes", () => {
@@ -19,4 +20,23 @@ describe("CLI envelopes", () => {
       errorEnvelope("apply", new VsnapError("STALE_BASELINE", "changed")),
     ).toMatchObject({ ok: false, error: { code: "STALE_BASELINE" } });
   });
+});
+
+describe("family output", () => {
+  it("shows the review compression and affected scope", () =>
+    expect(
+      formatFamilyNode({
+        id: "family_api-version",
+        kind: "family",
+        entryId: "entry_customer-1",
+        label: "API version added",
+        decision: "pending",
+        childCount: 40,
+        testCount: 40,
+        fileCount: 1,
+        confidence: "exact",
+      }),
+    ).toBe(
+      "family_api-version  pending  40 occurrences · 40 tests · 1 file · API version added",
+    ));
 });

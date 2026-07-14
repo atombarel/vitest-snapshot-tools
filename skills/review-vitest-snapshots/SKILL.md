@@ -1,11 +1,22 @@
 ---
 name: review-vitest-snapshots
-description: Safely run, inspect, approve, reject, preview, apply, and verify Vitest snapshot changes with the headless vsnap CLI. Use for Vitest snapshot updates, snapshot review requests, obsolete snapshots, file snapshots, approval workflows, or automated snapshot maintenance.
+description: Compact repeated Vitest snapshot failures into exact change families, inspect one representative diff per family, and safely approve, reject, preview, apply, and verify changes with the headless vsnap CLI. Use for Vitest snapshot updates, large failing snapshot suites, token-efficient agent review, obsolete snapshots, file snapshots, approval workflows, or automated snapshot maintenance.
 ---
 
 # Review Vitest Snapshots
 
 Use `vsnap` as the sole interface to candidate snapshots. Never edit real snapshot files, session metadata, or cache blobs directly.
+
+## Minimize model context
+
+Start with exact families. Do not enumerate or diff every entry when multiple
+hunks belong to the same family. A family is an exact added/removed-line
+fingerprint, not a semantic guess: inspect its representative `entryId` once,
+check its occurrence, test, and file counts, then make one family decision when
+the change is intended across that scope. Review singleton families separately.
+
+This ordering reduces CLI payloads, repeated diff content, tool calls, and model
+tokens without weakening the apply safeguards.
 
 ## Safe workflow
 
@@ -13,11 +24,11 @@ Use `vsnap` as the sole interface to candidate snapshots. Never edit real snapsh
    `vsnap run --json -- [vitest arguments]`
 2. Inspect the returned session:
    `vsnap status [session] --json`
-   `vsnap list [session] --kind family --status pending --json`
+   `vsnap families [session] --status pending --json`
 3. Read relevant diffs:
    use each family's representative `entryId` with
-   `vsnap diff entry_… --format json`, and list entries when more detail is
-   needed.
+   `vsnap diff entry_… --format json`. List individual entries only when the
+   representative or affected scope needs deeper investigation.
 4. Decide with stable selectors:
    `vsnap accept family_…`, `vsnap accept entry_…`, or
    `vsnap reject hunk_…`

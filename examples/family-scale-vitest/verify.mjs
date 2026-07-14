@@ -23,9 +23,10 @@ assert.match(generatedApp, /response\.sent/);
 const capture = JSON.parse(run(process.execPath, [cli, "run", "--json"]));
 assert.equal(capture.data.summary.total, 100);
 assert.equal(capture.data.summary.snapshotChanges, 100);
+assert.equal(capture.data.exactFamilies, 14);
 
 const listed = JSON.parse(
-  run(process.execPath, [cli, "list", "--kind", "family", "--json"]),
+  run(process.execPath, [cli, "families", "--status", "pending", "--json"]),
 );
 const counts = listed.data.items.map((item) => item.childCount);
 assert.deepEqual(counts.slice(0, 4), [40, 25, 15, 10]);

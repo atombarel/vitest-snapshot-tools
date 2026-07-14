@@ -2,7 +2,7 @@ import { cp, mkdir, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createSnapshotApplication } from "@vsnap/application";
-import { VsnapError } from "@vsnap/protocol";
+import { type ReviewNode, VsnapError } from "@vsnap/protocol";
 import { createSnapshotServer } from "@vsnap/server";
 import type { SessionOwner } from "@vsnap/session";
 import { SessionStore } from "@vsnap/session";
@@ -52,6 +52,14 @@ function positional(args: string[], offset = 1): string | undefined {
         all[index - 1] !== "--kind" &&
         all[index - 1] !== "--status",
     );
+}
+
+export function formatFamilyNode(node: ReviewNode): string {
+  const count = (value: number | undefined, singular: string) => {
+    const amount = value ?? 0;
+    return `${amount} ${singular}${amount === 1 ? "" : "s"}`;
+  };
+  return `${node.id}  ${node.decision}  ${count(node.childCount, "occurrence")} · ${count(node.testCount, "test")} · ${count(node.fileCount, "file")} · ${node.label}`;
 }
 
 async function liveOwner(
@@ -184,9 +192,13 @@ export async function runCli(
           signal: controller.signal,
         })
         .finally(() => process.removeListener("SIGINT", interrupt));
+      const families = await app.listNodes({
+        sessionId: session.id,
+        kind: "family",
+      });
       write(
-        session,
-        `Run complete · ${session.summary.passed} passed · ${session.summary.failed} failed · ${session.summary.snapshotChanges} snapshot changes · ${(session.summary.durationMs / 1000).toFixed(1)}s\nSession ${session.id} · Review with: vsnap ui --session ${session.id}`,
+        { ...session, exactFamilies: families.total },
+        `Run complete · ${session.summary.passed} passed · ${session.summary.failed} failed · ${session.summary.snapshotChanges} snapshot changes compacted into ${families.total} exact families · ${(session.summary.durationMs / 1000).toFixed(1)}s\nSession ${session.id} · Review families: vsnap families ${session.id} · Open UI: vsnap ui --no-run --session ${session.id}`,
       );
       return session.state === "interrupted"
         ? 130
@@ -248,6 +260,7 @@ export async function runCli(
     const commandAcceptsSession = [
       "status",
       "list",
+      "families",
       "preview",
       "apply",
       "verify",
@@ -275,14 +288,17 @@ export async function runCli(
       );
       return 0;
     }
-    if (command === "list") {
-      const requestedKind = option(parts.tool, "--kind") as
-        | "family"
-        | "file"
-        | "test"
-        | "entry"
-        | "hunk"
-        | undefined;
+    if (command === "list" || command === "families") {
+      const requestedKind =
+        command === "families"
+          ? "family"
+          : (option(parts.tool, "--kind") as
+              | "family"
+              | "file"
+              | "test"
+              | "entry"
+              | "hunk"
+              | undefined);
       const requestedStatus = option(parts.tool, "--status");
       const input = {
         sessionId,
@@ -301,7 +317,11 @@ export async function runCli(
       write(
         result,
         result.items
-          .map((node) => `${node.id}  ${node.decision}  ${node.label}`)
+          .map((node) =>
+            node.kind === "family"
+              ? formatFamilyNode(node)
+              : `${node.id}  ${node.decision}  ${node.label}`,
+          )
           .join("\n"),
       );
       return 0;
