@@ -12,7 +12,7 @@ export default defineConfig({
   platform: "node",
   format: "esm",
   dts: true,
-  sourcemap: true,
+  sourcemap: false,
   clean: true,
   external: [/^vitest(?:\/.*)?$/],
   noExternal: [/^@vsnap\//],
