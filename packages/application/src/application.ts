@@ -314,6 +314,7 @@ export function createSnapshotApplication(
       const filePaths = new Map(
         index.files.map((file) => [file.id, file.relativePath]),
       );
+      const fileById = new Map(index.files.map((file) => [file.id, file]));
       const hunksFor = (entryIds: string[]) =>
         index.hunks
           .filter((hunk) => entryIds.includes(hunk.entryId))
@@ -327,7 +328,7 @@ export function createSnapshotApplication(
           )
         : [];
       const testGroupName = (entry: StoredReviewEntry): string => {
-        const file = index.files.find((item) => item.id === entry.fileId);
+        const file = fileById.get(entry.fileId);
         const matches = finishedTests
           .filter((event) => {
             const eventId = String(event.payload.id ?? "");
@@ -354,10 +355,38 @@ export function createSnapshotApplication(
         if (matched) return String(matched.payload.name ?? entry.key);
         return entry.testName?.replace(/ > [^>]+$/, "") ?? entry.key;
       };
+      const snapshotRole = (entry: StoredReviewEntry): string => {
+        const file = fileById.get(entry.fileId);
+        if (file?.kind === "file") return file.relativePath;
+        if (file?.kind === "inline-unsupported") return "inline snapshot";
+        const testName = testGroupName(entry);
+        const namedSnapshot = entry.testName?.startsWith(`${testName} > `)
+          ? entry.testName.slice(testName.length + 3)
+          : undefined;
+        return namedSnapshot || "snapshot";
+      };
+      const familyScope = (
+        entries: StoredReviewEntry[],
+      ): string | undefined => {
+        const names = [
+          ...new Set(entries.map((entry) => testGroupName(entry))),
+        ];
+        const segments = names.map((name) => name.split(" > "));
+        const common: string[] = [];
+        for (let index = 0; ; index += 1) {
+          const segment = segments[0]?.[index];
+          if (!segment || segments.some((items) => items[index] !== segment))
+            break;
+          common.push(segment);
+        }
+        if (common.length === 0) return undefined;
+        return names.length === 1
+          ? common.slice(-2).join(" › ")
+          : common.at(-1);
+      };
       if (input.kind === "family") {
         const familyIndex = exactFamilyIndex(index);
         const groups = new Map<string, StoredReviewEntry[]>();
-        const fileById = new Map(index.files.map((file) => [file.id, file]));
         for (const entry of index.entries) {
           const fingerprint = familyIndex.hashByEntry.get(entry.id);
           if (!fingerprint) continue;
@@ -385,15 +414,21 @@ export function createSnapshotApplication(
             : [];
           const firstHunk = representativeHunks[0];
           if (!firstEntry || !firstHunk) continue;
+          const roles = [...new Set(entries.map(snapshotRole))];
+          const roleLabel = roles.slice(0, 2).join(" + ");
+          const omittedRoles = roles.length - 2;
+          const locationLabel = `${roleLabel}${omittedRoles > 0 ? ` + ${omittedRoles} more` : ""}`;
+          const scope = familyScope(entries);
+          const changeLabel =
+            representativeHunks.length === 1
+              ? (firstHunk.summary ?? "Exact snapshot change")
+              : `${representativeHunks.length} related changes · ${firstHunk.summary ?? "exact snapshot diff"}`;
           const changeTypes = new Set(entries.map((entry) => entry.changeType));
           nodes.push({
             id: exactFamilyId(contentHash),
             kind: "family",
             entryId: firstEntry.id,
-            label:
-              representativeHunks.length === 1
-                ? (firstHunk.summary ?? "Exact snapshot change")
-                : `${representativeHunks.length} related changes · ${firstHunk.summary ?? "exact snapshot diff"}`,
+            label: `${locationLabel}${scope ? ` in ${scope}` : ""} · ${changeLabel}`,
             decision: deriveDecision(hunks),
             ...(changeTypes.size === 1
               ? { changeType: firstEntry.changeType }

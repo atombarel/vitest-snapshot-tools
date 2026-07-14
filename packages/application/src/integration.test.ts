@@ -135,7 +135,9 @@ describe("transactional integration", () => {
       childCount: 2,
       testCount: 1,
       fileCount: 1,
-      label: expect.stringContaining("2 related changes"),
+      label: expect.stringMatching(
+        /metadata \+ record in captures a value · 2 related changes/,
+      ),
     });
     const family = families.items[0];
     if (!family) throw new Error("Expected one exact change family");
