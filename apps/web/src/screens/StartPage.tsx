@@ -1,6 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Activity, Camera, ChevronRight, ShieldCheck } from "lucide-react";
+import {
+  Activity,
+  Camera,
+  CheckCircle2,
+  ChevronRight,
+  ShieldCheck,
+  XCircle,
+} from "lucide-react";
 import { api } from "../api.js";
 
 export function StartPage() {
@@ -12,13 +19,15 @@ export function StartPage() {
   });
   return (
     <main className="start-shell">
-      <header className="brand">
-        <div className="brand-mark">
-          <Camera size={20} />
-        </div>
-        <div>
-          <strong>Vitest Snapshot Tools</strong>
-          <span>Transactional review workspace</span>
+      <header className="start-topbar">
+        <div className="brand">
+          <div className="brand-mark">
+            <Camera size={20} />
+          </div>
+          <div>
+            <strong>Vitest Snapshot Tools</strong>
+            <span>Transactional review workspace</span>
+          </div>
         </div>
       </header>
       <section className="hero">
@@ -31,7 +40,9 @@ export function StartPage() {
           <br />
           <em>before it lands.</em>
         </h1>
-        <p>{project.data?.repositoryRoot ?? "Loading repository…"}</p>
+        <p>
+          <code>{project.data?.repositoryRoot ?? "Loading repository…"}</code>
+        </p>
       </section>
       <section className="session-card">
         <div className="section-heading">
@@ -59,8 +70,19 @@ export function StartPage() {
                   {session.id.slice(0, 8)} · revision {session.revision}
                 </small>
               </div>
-              <span className="state-label">{session.state}</span>
-              <ChevronRight size={17} />
+              <div className="session-stats">
+                <span className="run-chip pass">
+                  <CheckCircle2 size={13} /> {session.summary.passed}
+                </span>
+                <span className="run-chip fail">
+                  <XCircle size={13} /> {session.summary.failed}
+                </span>
+                <span className="state-label">
+                  <span className={`state-dot ${session.state}`} />
+                  {session.state}
+                </span>
+              </div>
+              <ChevronRight size={17} className="chevron" />
             </Link>
           ))
         ) : (
