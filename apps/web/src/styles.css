@@ -246,9 +246,11 @@ kbd {
   color: var(--muted);
 }
 .review-shell {
-  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background: var(--canvas);
 }
 .runbar {
@@ -318,13 +320,18 @@ kbd {
   flex: 1;
   display: grid;
   grid-template-columns: 280px minmax(420px, 1fr) 280px;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
 }
 .tree-panel,
 .decision-panel {
+  height: 100%;
+  min-height: 0;
   min-width: 0;
   background: var(--surface-2);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 .tree-panel {
   border-right: 1px solid var(--line);
@@ -452,9 +459,12 @@ kbd {
   background: var(--amber);
 }
 .diff-panel {
+  height: 100%;
+  min-height: 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background: var(--canvas);
 }
 .diff-toolbar {
@@ -517,6 +527,7 @@ kbd {
   min-height: 0;
   flex: 1;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 14px;
   background:
     linear-gradient(
@@ -681,8 +692,7 @@ kbd {
   box-shadow: 0 12px 34px var(--shadow);
 }
 .source-code {
-  max-height: 520px;
-  overflow: auto;
+  overflow: visible;
   background: #fff;
 }
 :root[data-theme="dark"] .source-code {

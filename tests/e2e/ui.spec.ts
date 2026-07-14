@@ -58,6 +58,52 @@ test("shows one exact test block above both of its snapshot chunks", async ({
     'it("creates an invoice"',
   );
   await expect(page.locator(".snapshot-context")).toHaveCount(0);
+
+  const scrollLayout = await page.evaluate(() => {
+    const shell = document.querySelector<HTMLElement>(".review-shell");
+    const workspace = document.querySelector<HTMLElement>(".workspace");
+    const tree = document.querySelector<HTMLElement>(".tree-panel");
+    const center = document.querySelector<HTMLElement>(".diff-panel");
+    const scroll = document.querySelector<HTMLElement>(".diff-scroll");
+    const source = document.querySelector<HTMLElement>(".source-code");
+    if (!shell || !workspace || !tree || !center || !scroll || !source)
+      throw new Error("Review layout is incomplete");
+
+    const treeTop = tree.getBoundingClientRect().top;
+    scroll.scrollTop = scroll.scrollHeight;
+
+    return {
+      centerOverflow: getComputedStyle(center).overflow,
+      documentHeight: document.documentElement.scrollHeight,
+      pageScrollY: window.scrollY,
+      scrollOverflowY: getComputedStyle(scroll).overflowY,
+      scrollTop: scroll.scrollTop,
+      shellOverflow: getComputedStyle(shell).overflow,
+      sourceOverflowY: getComputedStyle(source).overflowY,
+      treeBottom: tree.getBoundingClientRect().bottom,
+      treeTopAfterCenterScroll: tree.getBoundingClientRect().top,
+      treeTop,
+      viewportHeight: window.innerHeight,
+      workspaceOverflow: getComputedStyle(workspace).overflow,
+    };
+  });
+  expect(scrollLayout).toMatchObject({
+    centerOverflow: "hidden",
+    pageScrollY: 0,
+    scrollOverflowY: "auto",
+    shellOverflow: "hidden",
+    sourceOverflowY: "visible",
+    treeTopAfterCenterScroll: scrollLayout.treeTop,
+    workspaceOverflow: "hidden",
+  });
+  expect(scrollLayout.scrollTop).toBeGreaterThan(0);
+  expect(scrollLayout.documentHeight).toBeLessThanOrEqual(
+    scrollLayout.viewportHeight,
+  );
+  expect(scrollLayout.treeBottom).toBeLessThanOrEqual(
+    scrollLayout.viewportHeight,
+  );
+
   await page.getByRole("button", { name: /theme: system/i }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 });
