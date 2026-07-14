@@ -1,9 +1,9 @@
 import type { ReviewSession, RunEvent } from "@vsnap/protocol";
 import {
   CheckCircle2,
-  CircleDot,
   Clock3,
   FileSearch,
+  Layers,
   LoaderCircle,
   XCircle,
 } from "lucide-react";
@@ -38,29 +38,30 @@ export function RunProgress({
 
   return (
     <section
-      className="run-progress-panel"
+      className="border-b bg-muted/40 px-4 py-3"
       aria-label="Test run progress"
       aria-live="polite"
     >
-      <div className="run-progress-heading">
-        <div>
-          <LoaderCircle className="run-progress-spinner" size={17} />
-          <span>
-            <strong>{progress.phase}</strong>
-            <small>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2.5">
+          <LoaderCircle className="size-4 animate-spin text-info" />
+          <div className="leading-tight">
+            <div className="text-sm font-medium">{progress.phase}</div>
+            <div className="text-xs text-muted-foreground">
               {progress.testsDiscovered
                 ? `${progress.testsFinished} of ${progress.testsDiscovered} discovered tests finished`
                 : "Waiting for Vitest to report discovered tests"}
-            </small>
-          </span>
+            </div>
+          </div>
         </div>
-        <code>
-          <Clock3 size={13} />
+        <div className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground tabular-nums">
+          <Clock3 className="size-3.5" />
           {formatElapsed(now - new Date(session.createdAt).getTime())}
-        </code>
+        </div>
       </div>
+
       <div
-        className={`run-execution-bar ${progress.testsDiscovered ? "" : "indeterminate"}`}
+        className="mt-3 h-1.5 overflow-hidden rounded-full bg-border"
         role="progressbar"
         aria-label="Test execution progress"
         aria-valuemin={0}
@@ -70,45 +71,67 @@ export function RunProgress({
         }
       >
         <span
-          style={{
-            width: `${progress.testsDiscovered ? percent : 28}%`,
-          }}
+          className={`block h-full rounded-full bg-info transition-[width] duration-500 ${progress.testsDiscovered ? "" : "animate-pulse"}`}
+          style={{ width: `${progress.testsDiscovered ? percent : 40}%` }}
         />
       </div>
-      <div className="run-progress-detail">
-        <div className="run-progress-metrics">
-          <span>
-            <CheckCircle2 /> <b>{progress.passed}</b> passed
-          </span>
-          <span className={progress.failed ? "failed" : ""}>
-            <XCircle /> <b>{progress.failed}</b> failed
-          </span>
-          <span>
-            <FileSearch /> <b>{progress.snapshotChanges}</b> changes
-          </span>
-          <span>
-            <CircleDot /> <b>{progress.modulesFinished}</b> /{" "}
-            {progress.modulesCollected} files
-          </span>
-        </div>
-        <div className="run-progress-activity">
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+        <span className="flex items-center gap-1.5 text-muted-foreground">
+          <CheckCircle2 className="size-3.5 text-success" />
+          <b className="font-semibold text-foreground tabular-nums">
+            {progress.passed}
+          </b>{" "}
+          passed
+        </span>
+        <span className="flex items-center gap-1.5 text-muted-foreground">
+          <XCircle
+            className={`size-3.5 ${progress.failed ? "text-destructive" : ""}`}
+          />
+          <b className="font-semibold text-foreground tabular-nums">
+            {progress.failed}
+          </b>{" "}
+          failed
+        </span>
+        <span className="flex items-center gap-1.5 text-muted-foreground">
+          <FileSearch className="size-3.5" />
+          <b className="font-semibold text-foreground tabular-nums">
+            {progress.snapshotChanges}
+          </b>{" "}
+          changes
+        </span>
+        <span className="flex items-center gap-1.5 text-muted-foreground">
+          <Layers className="size-3.5" />
+          <b className="font-semibold text-foreground tabular-nums">
+            {progress.modulesFinished}
+          </b>{" "}
+          / {progress.modulesCollected} files
+        </span>
+
+        <div className="ml-auto flex min-w-0 items-center gap-2 text-muted-foreground">
           {running.length > 0 ? (
-            running.slice(0, 2).map((name) => (
-              <span className="running" key={name}>
-                <LoaderCircle /> {name}
-              </span>
-            ))
+            <span className="flex min-w-0 items-center gap-1.5">
+              <LoaderCircle className="size-3.5 shrink-0 animate-spin text-info" />
+              <span className="truncate">{running[0]}</span>
+            </span>
           ) : progress.recentTests.length > 0 ? (
-            progress.recentTests.slice(0, 2).map((test) => (
-              <span className={test.status} key={test.id}>
-                {test.status === "failed" ? <XCircle /> : <CheckCircle2 />}
-                {test.name}
-                <small>{Math.round(test.durationMs)}ms</small>
+            progress.recentTests.slice(0, 1).map((test) => (
+              <span key={test.id} className="flex min-w-0 items-center gap-1.5">
+                {test.status === "failed" ? (
+                  <XCircle className="size-3.5 shrink-0 text-destructive" />
+                ) : (
+                  <CheckCircle2 className="size-3.5 shrink-0 text-success" />
+                )}
+                <span className="truncate">{test.name}</span>
+                <span className="tabular-nums">
+                  {Math.round(test.durationMs)}ms
+                </span>
               </span>
             ))
           ) : (
-            <span className="waiting">
-              <LoaderCircle /> Connecting to live test activity…
+            <span className="flex items-center gap-1.5">
+              <LoaderCircle className="size-3.5 animate-spin" />
+              Connecting to live activity…
             </span>
           )}
         </div>
