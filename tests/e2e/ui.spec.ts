@@ -19,7 +19,7 @@ test.beforeAll(async () => {
   ).id;
 });
 
-test("opens the exact owning test in a system-themed read-only code view", async ({
+test("shows one exact test block above both of its snapshot chunks", async ({
   page,
 }) => {
   await page.emulateMedia({ colorScheme: "dark" });
@@ -29,15 +29,25 @@ test("opens the exact owning test in a system-themed read-only code view", async
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page
     .getByRole("button", {
-      name: /account card > renders reviewable state > profile 1/i,
+      name: /demo API request review > lists active customers > request log 1/i,
     })
     .click();
-  await expect(page.getByText('toMatchSnapshot("profile")')).toBeVisible();
-  await page.getByRole("button", { name: "Test source" }).click();
-  await expect(page.getByText("src/account.test.ts")).toBeVisible();
+  await expect(page.getByText("src/request-review.test.ts")).toBeVisible();
   await expect(page.getByText("Read only")).toBeVisible();
-  await expect(page.locator("[data-matcher-line]")).toContainText(
-    "toMatchSnapshot",
+  await expect(page.locator("[data-matcher-line]")).toHaveCount(2);
+  const chunks = page.locator(".snapshot-chunk");
+  await expect(chunks).toHaveCount(2);
+  await expect(
+    chunks.filter({ hasText: 'toMatchSnapshot("request log")' }),
+  ).toHaveCount(1);
+  await expect(
+    chunks.filter({ hasText: 'toMatchSnapshot("HTTP response")' }),
+  ).toBeVisible();
+  await expect(page.locator(".source-code")).toContainText(
+    'it("lists active customers"',
+  );
+  await expect(page.locator(".source-code")).not.toContainText(
+    'it("creates an invoice"',
   );
   await page.getByRole("button", { name: /theme: system/i }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");

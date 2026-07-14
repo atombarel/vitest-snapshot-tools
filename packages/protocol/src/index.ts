@@ -203,10 +203,17 @@ export interface TestSource {
   focus: {
     testLine?: number;
     matcherLine?: number;
+    matcherLines?: number[];
     matcherColumn?: number;
     startLine: number;
     endLine: number;
   };
+}
+export interface TestReview {
+  sessionId: string;
+  test?: EntryDiff["context"]["test"];
+  source: TestSource;
+  entries: EntryDiff[];
 }
 export interface EntryDiff {
   entryId: string;
@@ -277,6 +284,7 @@ export interface GetTestSourceInput {
   sessionId: string;
   entryId: string;
 }
+export type GetTestReviewInput = GetTestSourceInput;
 export interface SetDecisionInput {
   sessionId: string;
   selector: string;
@@ -319,6 +327,7 @@ export interface SnapshotApplication {
   getEntryContent(input: EntryContentInput): Promise<EntryContent>;
   getDiff(input: GetDiffInput): Promise<EntryDiff>;
   getTestSource(input: GetTestSourceInput): Promise<TestSource>;
+  getTestReview(input: GetTestReviewInput): Promise<TestReview>;
   setDecision(input: SetDecisionInput): Promise<DecisionResult>;
   createPreview(input: CreatePreviewInput): Promise<ApplyPlan>;
   apply(input: ApplyInput): Promise<ApplyResult>;

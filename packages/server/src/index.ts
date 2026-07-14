@@ -183,6 +183,14 @@ export async function createSnapshotServer(
       }),
     ),
   );
+  app.get("/api/v1/sessions/:id/entries/:entryId/review", async (context) =>
+    context.json(
+      await application.getTestReview({
+        sessionId: context.req.param("id"),
+        entryId: context.req.param("entryId"),
+      }),
+    ),
+  );
   app.get("/api/v1/sessions/:id/entries/:entryId/content", async (context) => {
     const side = z
       .enum(["baseline", "candidate"])

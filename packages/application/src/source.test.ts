@@ -20,9 +20,10 @@ describe("test source location", () => {
       focus: {
         testLine: 2,
         matcherLine: 4,
+        matcherLines: [4],
         matcherColumn: 30,
-        startLine: 1,
-        endLine: 6,
+        startLine: 2,
+        endLine: 5,
       },
     });
   });

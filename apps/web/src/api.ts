@@ -8,6 +8,7 @@ import type {
   ReviewSession,
   RunEvent,
   SessionSummary,
+  TestReview,
   TestSource,
 } from "@vsnap/protocol";
 
@@ -48,6 +49,8 @@ export const api = {
     request<EntryDiff>(`/api/v1/sessions/${id}/entries/${entryId}`),
   source: (id: string, entryId: string) =>
     request<TestSource>(`/api/v1/sessions/${id}/entries/${entryId}/source`),
+  review: (id: string, entryId: string) =>
+    request<TestReview>(`/api/v1/sessions/${id}/entries/${entryId}/review`),
   decide: (
     id: string,
     selector: string,

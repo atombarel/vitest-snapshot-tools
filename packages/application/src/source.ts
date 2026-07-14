@@ -39,6 +39,70 @@ function testDeclarationLines(content: string): number[] {
   return declarations;
 }
 
+function testEndLine(content: string, testLine: number): number | undefined {
+  const lines = content.split("\n");
+  const lineOffset = lines
+    .slice(0, testLine - 1)
+    .reduce((total, line) => total + line.length + 1, 0);
+  const declaration = lines[testLine - 1] ?? "";
+  const match =
+    /\b(?:it|test)(?:\.(?:only|skip|todo|fails|concurrent|each))?\s*\(/.exec(
+      declaration,
+    );
+  if (!match) return undefined;
+  const open = content.indexOf("(", lineOffset + match.index);
+  if (open < 0) return undefined;
+
+  let depth = 0;
+  let quote: '"' | "'" | "`" | undefined;
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+  for (let index = open; index < content.length; index += 1) {
+    const character = content[index];
+    const next = content[index + 1];
+    if (lineComment) {
+      if (character === "\n") lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (character === "*" && next === "/") {
+        blockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (quote) {
+      if (character === "\\") escaped = true;
+      else if (character === quote) quote = undefined;
+      continue;
+    }
+    if (character === "/" && next === "/") {
+      lineComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === "/" && next === "*") {
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+      continue;
+    }
+    if (character === "(") depth += 1;
+    if (character !== ")") continue;
+    depth -= 1;
+    if (depth === 0) return lineAt(content, index);
+  }
+  return undefined;
+}
+
 function inferredTestLine(
   content: string,
   context: SourceContext,
@@ -163,18 +227,23 @@ export function locateTestSource(
   const lineCount = content.endsWith("\n") ? lines.length - 1 : lines.length;
   const testLine = inferredTestLine(content, context);
   const matcher = chooseMatcher(content, context, testLine);
-  const declarations = testDeclarationLines(content);
   const anchor = testLine ?? matcher?.line ?? 1;
-  const nextTest = declarations.find((line) => line > anchor);
-  const endLine = Math.min(lineCount, nextTest ? nextTest - 1 : anchor + 24);
+  const endLine = Math.min(
+    lineCount,
+    testLine ? (testEndLine(content, testLine) ?? anchor) : anchor,
+  );
   return {
     language: sourceLanguage(relativePath),
     focus: {
       ...(testLine ? { testLine } : {}),
       ...(matcher
-        ? { matcherLine: matcher.line, matcherColumn: matcher.column }
+        ? {
+            matcherLine: matcher.line,
+            matcherLines: [matcher.line],
+            matcherColumn: matcher.column,
+          }
         : {}),
-      startLine: Math.max(1, anchor - 2),
+      startLine: Math.max(1, testLine ?? anchor),
       endLine: Math.max(anchor, endLine),
     },
   };

@@ -30,13 +30,13 @@ describe("transactional integration", () => {
     });
     const session = await app.startRun({ repositoryRoot: fixture });
     expect(session.state).toBe("completed");
-    expect(session.summary.snapshotChanges).toBe(1);
+    expect(session.summary.snapshotChanges).toBe(2);
     expect(await readFile(snapshot, "utf8")).toBe(before);
     const entries = await app.listNodes({
       sessionId: session.id,
       kind: "entry",
     });
-    expect(entries.items).toHaveLength(1);
+    expect(entries.items).toHaveLength(2);
     const entry = entries.items[0];
     if (!entry) throw new Error("Expected one snapshot entry");
     const diff = await app.getDiff({
@@ -60,9 +60,17 @@ describe("transactional integration", () => {
     expect(source).toMatchObject({
       relativePath: "src/value.test.ts",
       language: "typescript",
-      focus: { testLine: 3, matcherLine: 5 },
+      focus: { testLine: 3 },
     });
-    expect(source.content).toContain("toMatchSnapshot()");
+    expect(source.content).toContain("toMatchSnapshot");
+    expect(source.content).not.toContain("import { expect, it }");
+    expect(source.content.trim()).toMatch(/^it\("captures a value"/);
+    const review = await app.getTestReview({
+      sessionId: session.id,
+      entryId: entry.id,
+    });
+    expect(review.entries).toHaveLength(2);
+    expect(review.source.focus.matcherLines).toHaveLength(2);
     const unsafeIndex = await store.readIndex(session);
     const sourceFile = unsafeIndex.files[0];
     if (!sourceFile) throw new Error("Expected indexed snapshot file");
@@ -73,11 +81,12 @@ describe("transactional integration", () => {
     ).rejects.toMatchObject({ code: "UNSAFE_PATH" });
     sourceFile.testFile = "src/value.test.ts";
     await store.writeIndex(session, unsafeIndex);
-    await app.setDecision({
-      sessionId: session.id,
-      selector: entry.id,
-      decision: "accepted",
-    });
+    for (const reviewEntry of review.entries)
+      await app.setDecision({
+        sessionId: session.id,
+        selector: reviewEntry.entryId,
+        decision: "accepted",
+      });
     const plan = await app.createPreview({ sessionId: session.id });
     expect(plan.patch).toContain("candidate");
     expect(await readFile(snapshot, "utf8")).toBe(before);

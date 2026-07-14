@@ -37,15 +37,15 @@ export function SourceCodeView({ source, theme }: SourceCodeViewProps) {
           transformers: [
             {
               line(node, line) {
-                node.properties["data-line-number"] = line;
-                if (
-                  line >= source.focus.startLine &&
-                  line <= source.focus.endLine
-                )
-                  node.properties["data-test-line"] = "";
-                if (line === source.focus.testLine)
+                const originalLine = source.focus.startLine + line - 1;
+                node.properties["data-line-number"] = originalLine;
+                node.properties["data-test-line"] = "";
+                if (originalLine === source.focus.testLine)
                   node.properties["data-test-start"] = "";
-                if (line === source.focus.matcherLine)
+                if (
+                  source.focus.matcherLines?.includes(originalLine) ||
+                  originalLine === source.focus.matcherLine
+                )
                   node.properties["data-matcher-line"] = "";
               },
             },
@@ -77,8 +77,8 @@ export function SourceCodeView({ source, theme }: SourceCodeViewProps) {
           <div>
             <strong>{source.relativePath}</strong>
             <span>
-              {source.focus.matcherLine
-                ? `Snapshot matcher at line ${source.focus.matcherLine}`
+              {source.focus.matcherLines?.length
+                ? `${source.focus.matcherLines.length} snapshot matcher${source.focus.matcherLines.length === 1 ? "" : "s"} highlighted`
                 : "Owning test source"}
             </span>
           </div>

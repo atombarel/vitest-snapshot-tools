@@ -19,6 +19,7 @@ import type {
   EntryContentInput,
   EntryDiff,
   GetDiffInput,
+  GetTestReviewInput,
   GetTestSourceInput,
   ListNodesInput,
   ListSessionsInput,
@@ -31,6 +32,7 @@ import type {
   SetDecisionInput,
   SnapshotApplication,
   StartRunInput,
+  TestReview,
   TestSource,
   VerifyInput,
 } from "@vsnap/protocol";
@@ -508,12 +510,91 @@ export function createSnapshotApplication(
         );
       const content = await readFile(canonicalPath, "utf8");
       const located = locateTestSource(content, relativePath, diff.context);
+      const snippet = content
+        .split("\n")
+        .slice(located.focus.startLine - 1, located.focus.endLine)
+        .join("\n");
       return {
         entryId: input.entryId,
         relativePath,
-        content,
-        contentHash: sha256(content),
+        content: snippet,
+        contentHash: sha256(snippet),
         ...located,
+      };
+    },
+    async getTestReview(input: GetTestReviewInput): Promise<TestReview> {
+      const session = await store.load(input.sessionId);
+      const selected = await application.getDiff(input);
+      const index = await store.readIndex(session);
+      const testId = selected.context.test?.id;
+      const testName = selected.context.test?.name;
+      const testFile = selected.context.test?.file;
+      const siblings = index.entries.filter((entry) => {
+        if (entry.id === input.entryId) return true;
+        const file = index.files.find((item) => item.id === entry.fileId);
+        if (!file) return false;
+        if (testId && file.testId === testId) return true;
+        const sameTestName = Boolean(
+          testName &&
+            entry.testName &&
+            (entry.testName === testName ||
+              entry.testName.startsWith(`${testName} > `)),
+        );
+        return Boolean(sameTestName && testFile && file.testFile === testFile);
+      });
+      const entries = await Promise.all(
+        siblings.map((entry) =>
+          application.getDiff({
+            sessionId: input.sessionId,
+            entryId: entry.id,
+          }),
+        ),
+      );
+      entries.sort(
+        (left, right) =>
+          (left.context.ordinal ?? 0) - (right.context.ordinal ?? 0) ||
+          left.context.snapshotKey.localeCompare(right.context.snapshotKey),
+      );
+      const sources = await Promise.all(
+        entries.map((entry) =>
+          application.getTestSource({
+            sessionId: input.sessionId,
+            entryId: entry.entryId,
+          }),
+        ),
+      );
+      const matcherLineByEntry = new Map(
+        sources.map((source) => [
+          source.entryId,
+          source.focus.matcherLine ?? Number.MAX_SAFE_INTEGER,
+        ]),
+      );
+      entries.sort(
+        (left, right) =>
+          (matcherLineByEntry.get(left.entryId) ?? Number.MAX_SAFE_INTEGER) -
+          (matcherLineByEntry.get(right.entryId) ?? Number.MAX_SAFE_INTEGER),
+      );
+      const selectedSource =
+        sources.find((source) => source.entryId === input.entryId) ??
+        sources[0];
+      if (!selectedSource)
+        throw new VsnapError(
+          "TEST_SOURCE_NOT_FOUND",
+          "No source was found for the owning test",
+        );
+      const matcherLines = [
+        ...new Set(
+          sources.flatMap((source) => source.focus.matcherLines ?? []),
+        ),
+      ].sort((left, right) => left - right);
+      return {
+        sessionId: input.sessionId,
+        ...(selected.context.test ? { test: selected.context.test } : {}),
+        source: {
+          ...selectedSource,
+          focus: { ...selectedSource.focus, matcherLines },
+        },
+        entries,
       };
     },
     async setDecision(input: SetDecisionInput): Promise<DecisionResult> {

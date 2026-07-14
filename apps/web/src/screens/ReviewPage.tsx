@@ -11,7 +11,6 @@ import {
   Code2,
   Columns2,
   FileCode2,
-  GitCompareArrows,
   Monitor,
   Moon,
   Play,
@@ -51,7 +50,6 @@ export function ReviewPage() {
     () => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false,
   );
   const resolvedTheme = resolveTheme(themeMode, systemPrefersDark);
-  const [view, setView] = useState<"diff" | "source">("diff");
   const [layout, setLayout] = useState<"split" | "unified">("split");
   const session = useQuery({
     queryKey: ["session", params.sessionId],
@@ -63,16 +61,10 @@ export function ReviewPage() {
     queryFn: () => api.nodes(params.sessionId, "entry", status),
     refetchInterval: 2000,
   });
-  const diff = useQuery({
-    queryKey: ["diff", params.sessionId, selected],
-    queryFn: () => api.diff(params.sessionId, selected as string),
+  const review = useQuery({
+    queryKey: ["review", params.sessionId, selected],
+    queryFn: () => api.review(params.sessionId, selected as string),
     enabled: Boolean(selected),
-  });
-  const source = useQuery({
-    queryKey: ["source", params.sessionId, selected],
-    queryFn: () => api.source(params.sessionId, selected as string),
-    enabled: Boolean(selected) && view === "source",
-    staleTime: 5_000,
   });
   const live = useStore(liveStore, (value) => value);
   useEffect(() => {
@@ -112,52 +104,66 @@ export function ReviewPage() {
     estimateSize: () => 47,
     overscan: 12,
   });
-  const diffLanguage = useMemo(
+  const renderedEntries = useMemo(
     () =>
-      diff.data
-        ? inferSnapshotLanguage(diff.data.baseline, diff.data.candidate)
-        : undefined,
-    [diff.data],
+      (review.data?.entries ?? []).map((entry) => {
+        const language = inferSnapshotLanguage(entry.baseline, entry.candidate);
+        const extension = language ?? "snap";
+        return {
+          entry,
+          language,
+          fileDiff: parseDiffFromFile(
+            {
+              name: `baseline.${extension}`,
+              contents: entry.baseline,
+              ...(language ? { lang: language } : {}),
+              cacheKey: `b-${entry.hunks.map((h) => h.contentHash).join()}`,
+            },
+            {
+              name: `candidate.${extension}`,
+              contents: entry.candidate,
+              ...(language ? { lang: language } : {}),
+              cacheKey: `c-${entry.hunks.map((h) => h.contentHash).join()}`,
+            },
+            { context: 3 },
+          ),
+        };
+      }),
+    [review.data],
   );
-  const fileDiff = useMemo(() => {
-    if (!diff.data) return null;
-    const extension = diffLanguage ?? "snap";
-    return parseDiffFromFile(
-      {
-        name: `baseline.${extension}`,
-        contents: diff.data.baseline,
-        ...(diffLanguage ? { lang: diffLanguage } : {}),
-        cacheKey: `b-${diff.data.hunks.map((h) => h.contentHash).join()}`,
-      },
-      {
-        name: `candidate.${extension}`,
-        contents: diff.data.candidate,
-        ...(diffLanguage ? { lang: diffLanguage } : {}),
-        cacheKey: `c-${diff.data.hunks.map((h) => h.contentHash).join()}`,
-      },
-      { context: 3 },
-    );
-  }, [diff.data, diffLanguage]);
+  const selectedDiff =
+    review.data?.entries.find((entry) => entry.entryId === selected) ??
+    review.data?.entries[0];
+  const visibleEntryIds = useMemo(
+    () => review.data?.entries.map((entry) => entry.entryId) ?? [],
+    [review.data],
+  );
   const decide = useMutation({
     mutationFn: ({
-      selector,
+      selectors,
       decision,
     }: {
-      selector: string;
+      selectors: string[];
       decision: "accepted" | "rejected";
     }) =>
-      api.decide(
-        params.sessionId,
-        selector,
-        decision,
-        session.data?.revision ?? 0,
+      selectors.reduce<Promise<unknown>>(
+        (pending, selector) =>
+          pending.then(() =>
+            api.decide(
+              params.sessionId,
+              selector,
+              decision,
+              session.data?.revision ?? 0,
+            ),
+          ),
+        Promise.resolve(),
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: ["nodes", params.sessionId],
       });
       await queryClient.invalidateQueries({
-        queryKey: ["diff", params.sessionId],
+        queryKey: ["review", params.sessionId],
       });
     },
     onError: (error) => toast.error(error.message),
@@ -174,9 +180,9 @@ export function ReviewPage() {
     const handler = (event: KeyboardEvent) => {
       if (!selected || event.target instanceof HTMLInputElement) return;
       if (event.key === "a")
-        decide.mutate({ selector: selected, decision: "accepted" });
+        decide.mutate({ selectors: visibleEntryIds, decision: "accepted" });
       if (event.key === "r")
-        decide.mutate({ selector: selected, decision: "rejected" });
+        decide.mutate({ selectors: visibleEntryIds, decision: "rejected" });
       if (event.key === "j" || event.key === "k") {
         const index = list.findIndex((item) => item.id === selected);
         setSelected(
@@ -191,7 +197,7 @@ export function ReviewPage() {
     };
     addEventListener("keydown", handler);
     return () => removeEventListener("keydown", handler);
-  }, [selected, list, decide.mutate]);
+  }, [selected, list, visibleEntryIds, decide.mutate]);
   const active = ["created", "collecting", "running", "cancelling"].includes(
     session.data?.state ?? "",
   );
@@ -324,156 +330,191 @@ export function ReviewPage() {
           <div className="diff-toolbar">
             <div>
               <span className="breadcrumb">
-                REVIEW / {selected?.slice(0, 14) ?? "SELECT AN ENTRY"}
-                {diffLanguage === "json" ? (
+                TEST REVIEW / {selected?.slice(0, 14) ?? "SELECT AN ENTRY"}
+                {renderedEntries.some((item) => item.language === "json") ? (
                   <span className="language-badge">JSON</span>
                 ) : null}
               </span>
-              <h1>
-                {list.find((item) => item.id === selected)?.label ??
-                  "Choose a snapshot change"}
-              </h1>
+              <h1>{review.data?.test?.name ?? "Choose a snapshot change"}</h1>
             </div>
             <div className="toolbar-actions">
-              <fieldset className="segmented view-switcher">
-                <legend className="sr-only">Review view</legend>
-                <button
-                  type="button"
-                  className={view === "diff" ? "selected" : ""}
-                  onClick={() => setView("diff")}
-                >
-                  <GitCompareArrows size={14} /> Snapshot diff
-                </button>
-                <button
-                  type="button"
-                  className={view === "source" ? "selected" : ""}
-                  onClick={() => setView("source")}
-                  disabled={!diff.data?.context.test?.file}
-                >
-                  <Code2 size={14} /> Test source
-                </button>
-              </fieldset>
-              {view === "diff" ? (
-                <div className="segmented">
-                  <button
-                    type="button"
-                    className={layout === "split" ? "selected" : ""}
-                    onClick={() => setLayout("split")}
-                  >
-                    <Columns2 size={14} /> Split
-                  </button>
-                  <button
-                    type="button"
-                    className={layout === "unified" ? "selected" : ""}
-                    onClick={() => setLayout("unified")}
-                  >
-                    Unified
-                  </button>
-                </div>
+              {review.data ? (
+                <span className="snapshot-count-badge">
+                  {review.data.entries.length} snapshot
+                  {review.data.entries.length === 1 ? "" : "s"} in this test
+                </span>
               ) : null}
+              <div className="segmented">
+                <button
+                  type="button"
+                  className={layout === "split" ? "selected" : ""}
+                  onClick={() => setLayout("split")}
+                >
+                  <Columns2 size={14} /> Split
+                </button>
+                <button
+                  type="button"
+                  className={layout === "unified" ? "selected" : ""}
+                  onClick={() => setLayout("unified")}
+                >
+                  Unified
+                </button>
+              </div>
             </div>
           </div>
-          {diff.data ? (
+          {selectedDiff ? (
             <section
               className="snapshot-context"
-              aria-label="Snapshot matcher context"
+              aria-label="Owning test context"
             >
-              <div className="matcher-context">
-                <span className="kicker">Individual snapshot</span>
-                <code>{matcherInvocation(diff.data.context)}</code>
-              </div>
               <div className="test-owner">
                 <span className="kicker">Owning test</span>
                 <div className="test-owner-title">
                   <strong>
-                    {diff.data.context.test?.name ?? "Test name unavailable"}
+                    {selectedDiff.context.test?.name ?? "Test name unavailable"}
                   </strong>
-                  {diff.data.context.test?.file ? (
-                    <button type="button" onClick={() => setView("source")}>
-                      <Code2 size={12} /> View code
-                    </button>
-                  ) : null}
                 </div>
                 <span className="source-location">
                   <FileCode2 size={12} />
-                  {diff.data.context.test?.file ?? "Unknown source file"}
-                  {diff.data.context.test?.location
-                    ? `:${diff.data.context.test.location.line}`
+                  {selectedDiff.context.test?.file ?? "Unknown source file"}
+                  {selectedDiff.context.test?.location
+                    ? `:${selectedDiff.context.test.location.line}`
                     : ""}
                 </span>
               </div>
+              <div className="test-snapshot-list">
+                <span className="kicker">Snapshot matchers</span>
+                <div>
+                  {review.data?.entries.map((entry) => (
+                    <code key={entry.entryId}>
+                      {matcherInvocation(entry.context)}
+                    </code>
+                  ))}
+                </div>
+              </div>
               <div className="snapshot-provenance">
-                {diff.data.context.test?.status ? (
+                {selectedDiff.context.test?.status ? (
                   <span
-                    className={`test-status ${diff.data.context.test.status}`}
+                    className={`test-status ${selectedDiff.context.test.status}`}
                   >
-                    {diff.data.context.test.status}
+                    {selectedDiff.context.test.status}
                   </span>
                 ) : null}
-                {diff.data.context.test?.durationMs !== undefined ? (
-                  <span>{Math.round(diff.data.context.test.durationMs)}ms</span>
+                {selectedDiff.context.test?.durationMs !== undefined ? (
+                  <span>
+                    {Math.round(selectedDiff.context.test.durationMs)}ms
+                  </span>
                 ) : null}
-                <span>{diff.data.context.changeType}</span>
-                <span className="snapshot-target">
-                  snapshot → {diff.data.context.snapshotFile}
+                <span className="snapshot-target test-review-target">
+                  source + {review.data?.entries.length ?? 0} candidate chunks
                 </span>
               </div>
             </section>
           ) : null}
           <div className="diff-scroll">
-            {view === "source" && source.data ? (
-              <Suspense
-                fallback={
-                  <div className="diff-empty">
-                    <Code2 size={36} />
-                    <strong>Loading source viewer…</strong>
+            {review.data ? (
+              <div className="test-review-stack">
+                <section className="test-source-section">
+                  <div className="review-section-heading">
+                    <div>
+                      <span className="section-number">01</span>
+                      <div>
+                        <span className="kicker">Exact test block</span>
+                        <strong>Source that produced these snapshots</strong>
+                      </div>
+                    </div>
+                    <span>Read only</span>
                   </div>
-                }
-              >
-                <SourceCodeView source={source.data} theme={resolvedTheme} />
-              </Suspense>
-            ) : view === "source" && source.isError ? (
+                  <Suspense
+                    fallback={
+                      <div className="source-inline-loading">
+                        <Code2 size={20} /> Coloring test source…
+                      </div>
+                    }
+                  >
+                    <SourceCodeView
+                      source={review.data.source}
+                      theme={resolvedTheme}
+                    />
+                  </Suspense>
+                </section>
+                <section
+                  className="snapshot-chunks"
+                  aria-label="Snapshot chunks generated by this test"
+                >
+                  <div className="review-section-heading">
+                    <div>
+                      <span className="section-number">02</span>
+                      <div>
+                        <span className="kicker">Generated snapshots</span>
+                        <strong>
+                          {renderedEntries.length} candidate chunk
+                          {renderedEntries.length === 1 ? "" : "s"}
+                        </strong>
+                      </div>
+                    </div>
+                    <span>Baseline → candidate</span>
+                  </div>
+                  {renderedEntries.map((item, index) => (
+                    <article
+                      className="snapshot-chunk"
+                      key={item.entry.entryId}
+                    >
+                      <header className="snapshot-chunk-header">
+                        <div>
+                          <span className="snapshot-chunk-index">
+                            Snapshot {index + 1} of {renderedEntries.length}
+                          </span>
+                          <code>{matcherInvocation(item.entry.context)}</code>
+                        </div>
+                        <div>
+                          {item.language === "json" ? (
+                            <span className="language-badge">JSON</span>
+                          ) : null}
+                          <span
+                            className={`change-badge ${item.entry.context.changeType}`}
+                          >
+                            {item.entry.context.changeType}
+                          </span>
+                        </div>
+                      </header>
+                      <FileDiff
+                        fileDiff={item.fileDiff}
+                        options={{
+                          diffStyle: layout,
+                          theme: {
+                            dark: "one-dark-pro",
+                            light: "github-light",
+                          },
+                          lineDiffType:
+                            Math.max(
+                              item.entry.baseline.length,
+                              item.entry.candidate.length,
+                            ) > 500_000
+                              ? "none"
+                              : "word-alt",
+                          hunkSeparators: "line-info",
+                        }}
+                      />
+                    </article>
+                  ))}
+                </section>
+              </div>
+            ) : review.isError ? (
               <div className="diff-empty source-error">
                 <FileCode2 size={36} />
-                <strong>Test source unavailable</strong>
-                <span>{source.error.message}</span>
-                <button
-                  type="button"
-                  className="button subtle"
-                  onClick={() => setView("diff")}
-                >
-                  Return to snapshot diff
-                </button>
+                <strong>Test review unavailable</strong>
+                <span>{review.error.message}</span>
               </div>
-            ) : view === "source" ? (
-              <div className="diff-empty">
-                <Code2 size={36} />
-                <strong>Loading test source…</strong>
-              </div>
-            ) : fileDiff ? (
-              <FileDiff
-                fileDiff={fileDiff}
-                options={{
-                  diffStyle: layout,
-                  theme: { dark: "one-dark-pro", light: "github-light" },
-                  lineDiffType:
-                    diff.data &&
-                    Math.max(
-                      diff.data.baseline.length,
-                      diff.data.candidate.length,
-                    ) > 500_000
-                      ? "none"
-                      : "word-alt",
-                  hunkSeparators: "line-info",
-                }}
-              />
             ) : (
               <div className="diff-empty">
                 <FileCode2 size={36} />
-                <strong>No snapshot selected</strong>
+                <strong>
+                  {selected ? "Loading test review…" : "No snapshot selected"}
+                </strong>
                 <span>
-                  Select an entry from the index to inspect its exact candidate
-                  diff.
+                  Select an entry to see its exact test source and every
+                  snapshot produced by that test.
                 </span>
               </div>
             )}
@@ -504,25 +545,29 @@ export function ReviewPage() {
           <div className="decision-actions">
             <button
               type="button"
-              disabled={!selected}
+              disabled={visibleEntryIds.length === 0 || decide.isPending}
               className="accept"
               onClick={() =>
-                selected &&
-                decide.mutate({ selector: selected, decision: "accepted" })
+                decide.mutate({
+                  selectors: visibleEntryIds,
+                  decision: "accepted",
+                })
               }
             >
-              <Check size={16} /> Accept entry <kbd>A</kbd>
+              <Check size={16} /> Accept test snapshots <kbd>A</kbd>
             </button>
             <button
               type="button"
-              disabled={!selected}
+              disabled={visibleEntryIds.length === 0 || decide.isPending}
               className="reject"
               onClick={() =>
-                selected &&
-                decide.mutate({ selector: selected, decision: "rejected" })
+                decide.mutate({
+                  selectors: visibleEntryIds,
+                  decision: "rejected",
+                })
               }
             >
-              <X size={16} /> Reject entry <kbd>R</kbd>
+              <X size={16} /> Reject test snapshots <kbd>R</kbd>
             </button>
           </div>
           <div className="notice">
