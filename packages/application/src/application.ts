@@ -303,13 +303,40 @@ export function createSnapshotApplication(
           });
         }
       if (!input.kind || input.kind === "test") {
+        const finishedTests = (await store.readEvents(session)).filter(
+          (event) => event.type === "test.finished",
+        );
+        const testGroupName = (entry: StoredReviewEntry): string => {
+          const file = index.files.find((item) => item.id === entry.fileId);
+          const matches = finishedTests
+            .filter((event) => {
+              const eventId = String(event.payload.id ?? "");
+              const eventName = String(event.payload.name ?? "");
+              const eventFile = String(event.payload.file ?? "");
+              return (
+                (file?.testId
+                  ? eventId === file.testId
+                  : Boolean(file?.testFile && file.testFile === eventFile)) &&
+                Boolean(
+                  eventName &&
+                    entry.testName &&
+                    (entry.testName === eventName ||
+                      entry.testName.startsWith(`${eventName} > `)),
+                )
+              );
+            })
+            .sort(
+              (left, right) =>
+                String(right.payload.name ?? "").length -
+                String(left.payload.name ?? "").length,
+            );
+          const matched = matches[0];
+          if (matched) return String(matched.payload.name ?? entry.key);
+          return entry.testName?.replace(/ > [^>]+$/, "") ?? entry.key;
+        };
         const groups = new Map<string, StoredReviewEntry[]>();
         for (const entry of index.entries) {
-          const id = stableId(
-            "test",
-            entry.fileId,
-            entry.testName ?? entry.key,
-          );
+          const id = stableId("test", entry.fileId, testGroupName(entry));
           groups.set(id, [...(groups.get(id) ?? []), entry]);
         }
         for (const [id, entries] of groups) {
@@ -318,8 +345,9 @@ export function createSnapshotApplication(
           nodes.push({
             id,
             kind: "test",
+            entryId: first.id,
             parentId: first.fileId,
-            label: first.testName ?? first.key,
+            label: testGroupName(first),
             decision: deriveDecision(hunksFor(entries.map((e) => e.id))),
             childCount: entries.length,
           });

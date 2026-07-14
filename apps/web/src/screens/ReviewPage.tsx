@@ -63,7 +63,7 @@ export function ReviewPage() {
   });
   const nodes = useQuery({
     queryKey: ["nodes", params.sessionId, status],
-    queryFn: () => api.nodes(params.sessionId, "entry", status),
+    queryFn: () => api.nodes(params.sessionId, "test", status),
     refetchInterval: 2000,
   });
   const review = useQuery({
@@ -189,7 +189,9 @@ export function ReviewPage() {
       if (event.key === "r")
         decide.mutate({ selectors: visibleEntryIds, decision: "rejected" });
       if (event.key === "j" || event.key === "k") {
-        const index = list.findIndex((item) => item.id === selected);
+        const index = list.findIndex(
+          (item) => (item.entryId ?? item.id) === selected,
+        );
         setSelected(
           list[
             Math.max(
@@ -320,15 +322,16 @@ export function ReviewPage() {
                   <button
                     type="button"
                     key={node.id}
-                    className={`tree-row ${node.decision} ${node.changeType ?? ""} ${selected === node.id ? "active" : ""}`}
+                    className={`tree-row ${node.decision} ${node.changeType ?? ""} ${selected === (node.entryId ?? node.id) ? "active" : ""}`}
                     style={{ transform: `translateY(${row.start}px)` }}
-                    onClick={() => setSelected(node.id)}
+                    onClick={() => setSelected(node.entryId ?? node.id)}
                   >
                     <span className={`decision-dot ${node.decision}`} />
                     <span>
                       <strong>{node.label}</strong>
                       <small>
-                        {node.changeType} · {node.childCount} hunk
+                        {node.changeType ? `${node.changeType} · ` : ""}
+                        {node.childCount} snapshot
                         {node.childCount === 1 ? "" : "s"}
                       </small>
                     </span>
