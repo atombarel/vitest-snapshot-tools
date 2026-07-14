@@ -1,6 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 describe("demo API request review", () => {
+  let completedRequestIds: string[];
+
+  beforeEach(() => {
+    completedRequestIds = [];
+  });
+
+  afterEach(() => {
+    expect(completedRequestIds).toHaveLength(1);
+  });
+
   it("lists active customers", () => {
     const requestLog = {
       level: "info",
@@ -23,6 +33,7 @@ describe("demo API request review", () => {
       },
     };
 
+    completedRequestIds.push(requestLog.requestId);
     expect(requestLog).toMatchSnapshot("request log");
     expect(httpResponse).toMatchSnapshot("HTTP response");
   });
@@ -56,6 +67,7 @@ describe("demo API request review", () => {
       },
     };
 
+    completedRequestIds.push(requestLog.requestId);
     expect(requestLog).toMatchSnapshot("request log");
     expect(httpResponse).toMatchSnapshot("HTTP response");
   });
@@ -83,6 +95,7 @@ describe("demo API request review", () => {
       },
     };
 
+    completedRequestIds.push(requestLog.requestId);
     expect(requestLog).toMatchSnapshot("request log");
     expect(httpResponse).toMatchSnapshot("HTTP response");
   });
@@ -109,6 +122,7 @@ describe("demo API request review", () => {
       },
     };
 
+    completedRequestIds.push(requestLog.requestId);
     expect(requestLog).toMatchSnapshot("request log");
     expect(httpResponse).toMatchSnapshot("HTTP response");
   });
@@ -138,6 +152,7 @@ describe("demo API request review", () => {
       },
     };
 
+    completedRequestIds.push(requestLog.requestId);
     expect(requestLog).toMatchSnapshot("request log");
     expect(httpResponse).toMatchSnapshot("HTTP response");
   });
@@ -166,6 +181,7 @@ describe("demo API request review", () => {
       },
     };
 
+    completedRequestIds.push(requestLog.requestId);
     expect(requestLog).toMatchSnapshot("request log");
     expect(httpResponse).toMatchSnapshot("HTTP response");
   });

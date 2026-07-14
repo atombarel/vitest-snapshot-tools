@@ -514,11 +514,14 @@ export function createSnapshotApplication(
         .split("\n")
         .slice(located.focus.startLine - 1, located.focus.endLine)
         .join("\n");
+      const reviewedContent = located.blocks
+        .map((block) => `${block.kind}:${block.startLine}\n${block.content}`)
+        .join("\n");
       return {
         entryId: input.entryId,
         relativePath,
         content: snippet,
-        contentHash: sha256(snippet),
+        contentHash: sha256(reviewedContent || snippet),
         ...located,
       };
     },

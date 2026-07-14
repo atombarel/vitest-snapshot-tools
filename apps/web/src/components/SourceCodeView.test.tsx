@@ -30,19 +30,32 @@ describe("read-only source view", () => {
       language: "typescript",
       content: "expect(value).toMatchSnapshot()",
       contentHash: "a".repeat(64),
+      blocks: [
+        {
+          kind: "beforeEach",
+          content: "beforeEach(() => setup())",
+          startLine: 1,
+          endLine: 1,
+        },
+        {
+          kind: "test",
+          content: "expect(value).toMatchSnapshot()",
+          startLine: 2,
+          endLine: 2,
+        },
+      ],
       focus: {
-        testLine: 1,
-        matcherLine: 1,
+        testLine: 2,
+        matcherLine: 2,
         matcherColumn: 14,
-        startLine: 1,
-        endLine: 1,
+        startLine: 2,
+        endLine: 2,
       },
     };
     const { container } = render(
       <SourceCodeView source={source} theme="dark" />,
     );
-    expect(screen.getByText("src/value.test.ts")).toBeDefined();
-    expect(screen.getByText("Read only")).toBeDefined();
+    expect(await screen.findByText("beforeEach")).toBeDefined();
     await waitFor(() =>
       expect(container.querySelector("[data-matcher-line]")).not.toBeNull(),
     );

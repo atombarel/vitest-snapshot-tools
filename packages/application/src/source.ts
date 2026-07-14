@@ -1,5 +1,5 @@
 import { basename, extname } from "node:path";
-import type { EntryDiff, TestSource } from "@vsnap/protocol";
+import type { EntryDiff, TestSource, TestSourceBlock } from "@vsnap/protocol";
 
 type SourceContext = EntryDiff["context"];
 
@@ -26,33 +26,76 @@ function sourceLanguage(path: string): TestSource["language"] {
   }
 }
 
-function testDeclarationLines(content: string): number[] {
-  const lines = content.split("\n");
-  const declarations: number[] = [];
-  for (let index = 0; index < lines.length; index += 1)
-    if (
-      /\b(?:it|test)(?:\.(?:only|skip|todo|fails|concurrent|each))?\s*\(/.test(
-        lines[index] ?? "",
-      )
-    )
-      declarations.push(index + 1);
-  return declarations;
+interface CallOccurrence {
+  offset: number;
+  line: number;
+  open: number;
 }
 
-function testEndLine(content: string, testLine: number): number | undefined {
-  const lines = content.split("\n");
-  const lineOffset = lines
-    .slice(0, testLine - 1)
-    .reduce((total, line) => total + line.length + 1, 0);
-  const declaration = lines[testLine - 1] ?? "";
-  const match =
-    /\b(?:it|test)(?:\.(?:only|skip|todo|fails|concurrent|each))?\s*\(/.exec(
-      declaration,
-    );
-  if (!match) return undefined;
-  const open = content.indexOf("(", lineOffset + match.index);
-  if (open < 0) return undefined;
+interface BraceRange {
+  start: number;
+  end: number;
+}
 
+function scanSourceStructure(content: string): {
+  code: Uint8Array;
+  braces: BraceRange[];
+} {
+  const code = new Uint8Array(content.length);
+  const braces: BraceRange[] = [];
+  const braceStack: number[] = [];
+  let quote: '"' | "'" | "`" | undefined;
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content[index];
+    const next = content[index + 1];
+    if (lineComment) {
+      if (character === "\n") lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (character === "*" && next === "/") {
+        blockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (quote) {
+      if (character === "\\") escaped = true;
+      else if (character === quote) quote = undefined;
+      continue;
+    }
+    code[index] = 1;
+    if (character === "/" && next === "/") {
+      lineComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === "/" && next === "*") {
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+      continue;
+    }
+    if (character === "{") braceStack.push(index);
+    if (character === "}") {
+      const start = braceStack.pop();
+      if (start !== undefined) braces.push({ start, end: index });
+    }
+  }
+  return { code, braces };
+}
+
+function callEndOffset(content: string, open: number): number | undefined {
   let depth = 0;
   let quote: '"' | "'" | "`" | undefined;
   let escaped = false;
@@ -98,9 +141,40 @@ function testEndLine(content: string, testLine: number): number | undefined {
     if (character === "(") depth += 1;
     if (character !== ")") continue;
     depth -= 1;
-    if (depth === 0) return lineAt(content, index);
+    if (depth === 0) return index;
   }
   return undefined;
+}
+
+function occurrences(
+  content: string,
+  expression: RegExp,
+  code: Uint8Array,
+): CallOccurrence[] {
+  return [...content.matchAll(expression)]
+    .filter((match) => code[match.index ?? 0] === 1)
+    .map((match) => {
+      const offset = match.index ?? 0;
+      return {
+        offset,
+        line: lineAt(content, offset),
+        open: content.indexOf("(", offset),
+      };
+    })
+    .filter((item) => item.open >= 0);
+}
+
+function testOccurrences(content: string, code: Uint8Array): CallOccurrence[] {
+  return occurrences(
+    content,
+    /\b(?:it|test)(?:\.(?:only|skip|todo|fails|concurrent|each))?\s*\(/g,
+    code,
+  );
+}
+
+function testDeclarationLines(content: string): number[] {
+  const { code } = scanSourceStructure(content);
+  return testOccurrences(content, code).map((item) => item.line);
 }
 
 function inferredTestLine(
@@ -218,22 +292,116 @@ function chooseMatcher(
   return candidates[0];
 }
 
+function blockFromLines(
+  content: string,
+  kind: TestSourceBlock["kind"],
+  startLine: number,
+  endLine: number,
+): TestSourceBlock {
+  return {
+    kind,
+    content: content
+      .split("\n")
+      .slice(startLine - 1, endLine)
+      .join("\n"),
+    startLine,
+    endLine,
+  };
+}
+
+function scopeAt(braces: BraceRange[], offset: number): number[] {
+  return braces
+    .filter((brace) => brace.start < offset && brace.end > offset)
+    .sort((left, right) => left.start - right.start)
+    .map((brace) => brace.start);
+}
+
+function isParentScope(parent: number[], child: number[]): boolean {
+  return (
+    parent.length <= child.length &&
+    parent.every((brace, index) => child[index] === brace)
+  );
+}
+
+function linkedSourceBlocks(
+  content: string,
+  test: CallOccurrence | undefined,
+  structure: ReturnType<typeof scanSourceStructure>,
+): TestSourceBlock[] {
+  if (!test) return [];
+  const testEnd = callEndOffset(content, test.open);
+  if (testEnd === undefined) return [];
+  const testScope = scopeAt(structure.braces, test.offset);
+  const hooks = [...content.matchAll(/\b(beforeEach|afterEach)\s*\(/g)].flatMap(
+    (match) => {
+      const offset = match.index ?? 0;
+      if (structure.code[offset] !== 1) return [];
+      const kind = match[1] as "beforeEach" | "afterEach";
+      const open = content.indexOf("(", offset);
+      if (open < 0) return [];
+      const end = callEndOffset(content, open);
+      if (end === undefined) return [];
+      const scope = scopeAt(structure.braces, offset);
+      if (!isParentScope(scope, testScope)) return [];
+      return [
+        {
+          kind,
+          offset,
+          scopeDepth: scope.length,
+          block: blockFromLines(
+            content,
+            kind,
+            lineAt(content, offset),
+            lineAt(content, end),
+          ),
+        },
+      ];
+    },
+  );
+  const before = hooks
+    .filter((hook) => hook.kind === "beforeEach")
+    .sort(
+      (left, right) =>
+        left.scopeDepth - right.scopeDepth || left.offset - right.offset,
+    )
+    .map((hook) => hook.block);
+  const after = hooks
+    .filter((hook) => hook.kind === "afterEach")
+    .sort(
+      (left, right) =>
+        right.scopeDepth - left.scopeDepth || left.offset - right.offset,
+    )
+    .map((hook) => hook.block);
+  return [
+    ...before,
+    blockFromLines(content, "test", test.line, lineAt(content, testEnd)),
+    ...after,
+  ];
+}
+
 export function locateTestSource(
   content: string,
   relativePath: string,
   context: SourceContext,
-): Pick<TestSource, "language" | "focus"> {
+): Pick<TestSource, "language" | "focus" | "blocks"> {
   const lines = content.split("\n");
   const lineCount = content.endsWith("\n") ? lines.length - 1 : lines.length;
   const testLine = inferredTestLine(content, context);
   const matcher = chooseMatcher(content, context, testLine);
   const anchor = testLine ?? matcher?.line ?? 1;
+  const structure = scanSourceStructure(content);
+  const test = testOccurrences(content, structure.code).find(
+    (occurrence) => occurrence.line === testLine,
+  );
   const endLine = Math.min(
     lineCount,
-    testLine ? (testEndLine(content, testLine) ?? anchor) : anchor,
+    test
+      ? lineAt(content, callEndOffset(content, test.open) ?? test.offset)
+      : anchor,
   );
   return {
     language: sourceLanguage(relativePath),
+    blocks: linkedSourceBlocks(content, test, structure),
     focus: {
       ...(testLine ? { testLine } : {}),
       ...(matcher

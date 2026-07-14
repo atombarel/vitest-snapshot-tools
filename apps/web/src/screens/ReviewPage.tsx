@@ -131,13 +131,13 @@ export function ReviewPage() {
       }),
     [review.data],
   );
-  const selectedDiff =
-    review.data?.entries.find((entry) => entry.entryId === selected) ??
-    review.data?.entries[0];
   const visibleEntryIds = useMemo(
     () => review.data?.entries.map((entry) => entry.entryId) ?? [],
     [review.data],
   );
+  const linkedHookCount =
+    review.data?.source.blocks.filter((block) => block.kind !== "test")
+      .length ?? 0;
   const decide = useMutation({
     mutationFn: ({
       selectors,
@@ -329,21 +329,10 @@ export function ReviewPage() {
         <main className="diff-panel">
           <div className="diff-toolbar">
             <div>
-              <span className="breadcrumb">
-                TEST REVIEW / {selected?.slice(0, 14) ?? "SELECT AN ENTRY"}
-                {renderedEntries.some((item) => item.language === "json") ? (
-                  <span className="language-badge">JSON</span>
-                ) : null}
-              </span>
+              <span className="breadcrumb">TEST REVIEW</span>
               <h1>{review.data?.test?.name ?? "Choose a snapshot change"}</h1>
             </div>
             <div className="toolbar-actions">
-              {review.data ? (
-                <span className="snapshot-count-badge">
-                  {review.data.entries.length} snapshot
-                  {review.data.entries.length === 1 ? "" : "s"} in this test
-                </span>
-              ) : null}
               <div className="segmented">
                 <button
                   type="button"
@@ -362,68 +351,23 @@ export function ReviewPage() {
               </div>
             </div>
           </div>
-          {selectedDiff ? (
-            <section
-              className="snapshot-context"
-              aria-label="Owning test context"
-            >
-              <div className="test-owner">
-                <span className="kicker">Owning test</span>
-                <div className="test-owner-title">
-                  <strong>
-                    {selectedDiff.context.test?.name ?? "Test name unavailable"}
-                  </strong>
-                </div>
-                <span className="source-location">
-                  <FileCode2 size={12} />
-                  {selectedDiff.context.test?.file ?? "Unknown source file"}
-                  {selectedDiff.context.test?.location
-                    ? `:${selectedDiff.context.test.location.line}`
-                    : ""}
-                </span>
-              </div>
-              <div className="test-snapshot-list">
-                <span className="kicker">Snapshot matchers</span>
-                <div>
-                  {review.data?.entries.map((entry) => (
-                    <code key={entry.entryId}>
-                      {matcherInvocation(entry.context)}
-                    </code>
-                  ))}
-                </div>
-              </div>
-              <div className="snapshot-provenance">
-                {selectedDiff.context.test?.status ? (
-                  <span
-                    className={`test-status ${selectedDiff.context.test.status}`}
-                  >
-                    {selectedDiff.context.test.status}
-                  </span>
-                ) : null}
-                {selectedDiff.context.test?.durationMs !== undefined ? (
-                  <span>
-                    {Math.round(selectedDiff.context.test.durationMs)}ms
-                  </span>
-                ) : null}
-                <span className="snapshot-target test-review-target">
-                  source + {review.data?.entries.length ?? 0} candidate chunks
-                </span>
-              </div>
-            </section>
-          ) : null}
           <div className="diff-scroll">
             {review.data ? (
               <div className="test-review-stack">
                 <section className="test-source-section">
                   <div className="review-section-heading">
                     <div>
-                      <span className="section-number">01</span>
                       <div>
-                        <span className="kicker">Exact test block</span>
-                        <strong>Source that produced these snapshots</strong>
+                        <strong>Test source</strong>
+                        <span>{review.data.source.relativePath}</span>
                       </div>
                     </div>
-                    <span>Read only</span>
+                    <span>
+                      {linkedHookCount
+                        ? `${linkedHookCount} linked hook${linkedHookCount === 1 ? "" : "s"}`
+                        : "No linked hooks"}{" "}
+                      · read only
+                    </span>
                   </div>
                   <Suspense
                     fallback={
@@ -444,16 +388,15 @@ export function ReviewPage() {
                 >
                   <div className="review-section-heading">
                     <div>
-                      <span className="section-number">02</span>
                       <div>
-                        <span className="kicker">Generated snapshots</span>
-                        <strong>
-                          {renderedEntries.length} candidate chunk
-                          {renderedEntries.length === 1 ? "" : "s"}
-                        </strong>
+                        <strong>Snapshot changes</strong>
+                        <span>Baseline → candidate</span>
                       </div>
                     </div>
-                    <span>Baseline → candidate</span>
+                    <span>
+                      {renderedEntries.length} chunk
+                      {renderedEntries.length === 1 ? "" : "s"}
+                    </span>
                   </div>
                   {renderedEntries.map((item, index) => (
                     <article
@@ -462,9 +405,10 @@ export function ReviewPage() {
                     >
                       <header className="snapshot-chunk-header">
                         <div>
-                          <span className="snapshot-chunk-index">
-                            Snapshot {index + 1} of {renderedEntries.length}
-                          </span>
+                          <strong className="snapshot-chunk-title">
+                            {item.entry.context.snapshotName ??
+                              `Snapshot ${index + 1}`}
+                          </strong>
                           <code>{matcherInvocation(item.entry.context)}</code>
                         </div>
                         <div>

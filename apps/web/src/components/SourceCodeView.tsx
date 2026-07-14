@@ -7,8 +7,7 @@ import typescript from "@shikijs/langs/typescript";
 import githubLight from "@shikijs/themes/github-light";
 import oneDarkPro from "@shikijs/themes/one-dark-pro";
 import type { TestSource } from "@vsnap/protocol";
-import { Braces, Crosshair, Eye } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ResolvedTheme } from "../theme.js";
 
 const sourceHighlighter = createHighlighterCore({
@@ -23,45 +22,64 @@ export interface SourceCodeViewProps {
 }
 
 export function SourceCodeView({ source, theme }: SourceCodeViewProps) {
-  const [html, setHtml] = useState("");
+  const [html, setHtml] = useState<string[]>([]);
   const container = useRef<HTMLDivElement>(null);
+  const blocks = useMemo(
+    () =>
+      source.blocks.length
+        ? source.blocks
+        : [
+            {
+              kind: "test" as const,
+              content: source.content,
+              startLine: source.focus.startLine,
+              endLine: source.focus.endLine,
+            },
+          ],
+    [source],
+  );
 
   useEffect(() => {
     let active = true;
-    setHtml("");
+    setHtml([]);
     void sourceHighlighter
       .then((highlighter) =>
-        highlighter.codeToHtml(source.content, {
-          lang: source.language,
-          theme: theme === "dark" ? "one-dark-pro" : "github-light",
-          transformers: [
-            {
-              line(node, line) {
-                const originalLine = source.focus.startLine + line - 1;
-                node.properties["data-line-number"] = originalLine;
-                node.properties["data-test-line"] = "";
-                if (originalLine === source.focus.testLine)
-                  node.properties["data-test-start"] = "";
-                if (
-                  source.focus.matcherLines?.includes(originalLine) ||
-                  originalLine === source.focus.matcherLine
-                )
-                  node.properties["data-matcher-line"] = "";
-              },
-            },
-          ],
-        }),
+        Promise.all(
+          blocks.map((block) =>
+            highlighter.codeToHtml(block.content, {
+              lang: source.language,
+              theme: theme === "dark" ? "one-dark-pro" : "github-light",
+              transformers: [
+                {
+                  line(node, line) {
+                    const originalLine = block.startLine + line - 1;
+                    node.properties["data-line-number"] = originalLine;
+                    if (block.kind === "test")
+                      node.properties["data-test-line"] = "";
+                    if (originalLine === source.focus.testLine)
+                      node.properties["data-test-start"] = "";
+                    if (
+                      source.focus.matcherLines?.includes(originalLine) ||
+                      originalLine === source.focus.matcherLine
+                    )
+                      node.properties["data-matcher-line"] = "";
+                  },
+                },
+              ],
+            }),
+          ),
+        ),
       )
-      .then((value) => {
-        if (active) setHtml(value);
+      .then((values) => {
+        if (active) setHtml(values);
       });
     return () => {
       active = false;
     };
-  }, [source, theme]);
+  }, [blocks, source, theme]);
 
   useEffect(() => {
-    if (!html) return;
+    if (html.length === 0) return;
     container.current
       ?.querySelector("[data-matcher-line]")
       ?.scrollIntoView({ block: "center" });
@@ -69,37 +87,29 @@ export function SourceCodeView({ source, theme }: SourceCodeViewProps) {
 
   return (
     <section className="source-view" aria-label="Read-only test source">
-      <header className="source-view-header">
-        <div>
-          <span className="source-icon">
-            <Braces size={14} />
-          </span>
-          <div>
-            <strong>{source.relativePath}</strong>
-            <span>
-              {source.focus.matcherLines?.length
-                ? `${source.focus.matcherLines.length} snapshot matcher${source.focus.matcherLines.length === 1 ? "" : "s"} highlighted`
-                : "Owning test source"}
-            </span>
-          </div>
-        </div>
-        <div className="source-badges">
-          <span>
-            <Crosshair size={12} /> Focused test
-          </span>
-          <span>
-            <Eye size={12} /> Read only
-          </span>
-        </div>
-      </header>
       <div
-        className={`source-code ${html ? "ready" : "loading"}`}
+        className={`source-code ${html.length ? "ready" : "loading"}`}
         ref={container}
       >
-        {html ? (
-          // Shiki escapes source text and returns syntax-highlighted, inert markup.
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted Shiki renderer output
-          <div dangerouslySetInnerHTML={{ __html: html }} />
+        {html.length ? (
+          blocks.map((block, index) => (
+            <div
+              className={`source-block ${block.kind}`}
+              key={`${block.kind}-${block.startLine}`}
+            >
+              {block.kind === "test" ? null : (
+                <div className="source-block-label">
+                  <strong>{block.kind}</strong>
+                  <span>linked · line {block.startLine}</span>
+                </div>
+              )}
+              <div
+                // Shiki escapes source text and returns syntax-highlighted, inert markup.
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted Shiki renderer output
+                dangerouslySetInnerHTML={{ __html: html[index] ?? "" }}
+              />
+            </div>
+          ))
         ) : (
           <div className="source-loading">Coloring test source…</div>
         )}

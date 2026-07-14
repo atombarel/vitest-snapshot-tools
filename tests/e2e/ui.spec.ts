@@ -32,8 +32,16 @@ test("shows one exact test block above both of its snapshot chunks", async ({
       name: /demo API request review > lists active customers > request log 1/i,
     })
     .click();
-  await expect(page.getByText("src/request-review.test.ts")).toBeVisible();
-  await expect(page.getByText("Read only")).toBeVisible();
+  await expect(
+    page.getByText("src/request-review.test.ts", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("2 linked hooks · read only")).toBeVisible();
+  await expect(page.locator(".source-block.beforeEach")).toContainText(
+    "completedRequestIds = []",
+  );
+  await expect(page.locator(".source-block.afterEach")).toContainText(
+    "toHaveLength(1)",
+  );
   await expect(page.locator("[data-matcher-line]")).toHaveCount(2);
   const chunks = page.locator(".snapshot-chunk");
   await expect(chunks).toHaveCount(2);
@@ -49,6 +57,7 @@ test("shows one exact test block above both of its snapshot chunks", async ({
   await expect(page.locator(".source-code")).not.toContainText(
     'it("creates an invoice"',
   );
+  await expect(page.locator(".snapshot-context")).toHaveCount(0);
   await page.getByRole("button", { name: /theme: system/i }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 });

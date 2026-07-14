@@ -34,8 +34,8 @@ standard `.snap` change, a Markdown file snapshot, and a large paginated API
 response. The JSON response creates a substantial multi-hunk diff with syntax
 highlighting in the review UI. A larger request suite adds six API tests; each
 test produces a request-log snapshot and an HTTP-response snapshot. Selecting
-either snapshot shows the exact owning test block followed by both candidate
-chunks in one review:
+either snapshot shows its linked `beforeEach`/`afterEach` hooks, the exact
+owning test block, and both candidate chunks in one review:
 
 ```sh
 corepack enable

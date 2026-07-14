@@ -194,12 +194,19 @@ export interface EntryContent {
   content: string | null;
   hash: string | null;
 }
+export interface TestSourceBlock {
+  kind: "beforeEach" | "test" | "afterEach";
+  content: string;
+  startLine: number;
+  endLine: number;
+}
 export interface TestSource {
   entryId: string;
   relativePath: string;
   language: "typescript" | "tsx" | "javascript" | "jsx" | "text";
   content: string;
   contentHash: string;
+  blocks: TestSourceBlock[];
   focus: {
     testLine?: number;
     matcherLine?: number;
