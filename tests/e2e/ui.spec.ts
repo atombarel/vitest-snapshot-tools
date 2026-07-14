@@ -33,7 +33,7 @@ test("shows one exact test block above both of its snapshot chunks", async ({
   await page.locator(".tree-row").first().click();
   await expect(page.getByText("EXACT CHANGE FAMILY")).toBeVisible();
   await expect(page.locator(".family-summary")).toContainText("occurrences");
-  await page.getByRole("button", { name: "Tests", exact: true }).click();
+  await page.getByText("Tests", { exact: true }).click();
   await page
     .getByRole("button", {
       name: /demo API request review > lists active customers/i,

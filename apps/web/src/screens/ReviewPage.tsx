@@ -1,7 +1,7 @@
 import { parseDiffFromFile } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -9,11 +9,11 @@ import {
   Code2,
   Columns2,
   FileCode2,
-  Info,
+  LoaderCircle,
   Monitor,
   Moon,
-  Play,
   RotateCcw,
+  Rows2,
   Search,
   Square,
   Sun,
@@ -22,9 +22,22 @@ import {
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api, subscribeEvents } from "../api.js";
+import { RunProgress } from "../components/RunProgress.js";
+import { Badge } from "../components/ui/badge.js";
+import { Button } from "../components/ui/button.js";
+import { Input } from "../components/ui/input.js";
+import { Kbd } from "../components/ui/kbd.js";
+import { Separator } from "../components/ui/separator.js";
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group.js";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../components/ui/tooltip.js";
 import { inferSnapshotLanguage } from "../diff-language.js";
 import { matcherInvocation } from "../snapshot-context.js";
-import { liveStore, reduceEvent } from "../store.js";
+import { beginLiveSession, liveStore, reduceEvent } from "../store.js";
 import { nextThemeMode, parseThemeMode, resolveTheme } from "../theme.js";
 
 const SourceCodeView = lazy(() =>
@@ -39,12 +52,27 @@ function changeGlyph(changeType?: string): string {
   return "~";
 }
 
+function changeTone(changeType?: string): string {
+  if (changeType === "added")
+    return "border-success/30 bg-success/10 text-success";
+  if (changeType === "deleted")
+    return "border-destructive/30 bg-destructive/10 text-destructive";
+  return "border-border bg-muted text-muted-foreground";
+}
+
+function decisionTone(decision?: string): string {
+  if (decision === "accepted") return "bg-success";
+  if (decision === "rejected") return "bg-destructive";
+  return "bg-warning";
+}
+
 export function ReviewPage() {
   const params = useParams({ strict: false }) as {
     sessionId: string;
     entryId?: string;
   };
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [selected, setSelected] = useState(params.entryId);
   const [grouping, setGrouping] = useState<"family" | "test">("family");
   const [filter, setFilter] = useState("");
@@ -77,11 +105,25 @@ export function ReviewPage() {
     enabled: Boolean(reviewEntryId),
   });
   const live = useStore(liveStore, (value) => value);
+  const liveEvents = live.sessionId === params.sessionId ? live.events : [];
+  const runningTests =
+    live.sessionId === params.sessionId ? live.runningTests : {};
+  // A rerun navigates to a new child session while keeping this component
+  // mounted; clear selection/filters so nothing stale leaks across.
+  const previousSessionId = useRef(params.sessionId);
+  useEffect(() => {
+    if (previousSessionId.current === params.sessionId) return;
+    previousSessionId.current = params.sessionId;
+    setSelected(undefined);
+    setFilter("");
+    setStatus(undefined);
+  }, [params.sessionId]);
   useEffect(() => {
     const controller = new AbortController();
+    const afterSequence = beginLiveSession(params.sessionId);
     void subscribeEvents(
       params.sessionId,
-      liveStore.state.sequence,
+      afterSequence,
       reduceEvent,
       controller.signal,
     ).catch(() => undefined);
@@ -114,7 +156,7 @@ export function ReviewPage() {
   const virtualizer = useVirtualizer({
     count: list.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 47,
+    estimateSize: () => 60,
     overscan: 12,
   });
   const renderedEntries = useMemo(
@@ -205,6 +247,28 @@ export function ReviewPage() {
     },
     onError: (error) => toast.error(error.message),
   });
+  const rerun = useMutation({
+    mutationFn: () => api.rerun(params.sessionId),
+    onSuccess: (child) => {
+      // rerun() spawns a fresh child session with its own event stream, so
+      // navigate to it: the session/nodes queries and the live SSE all
+      // re-initialise exactly like the first load, showing live progress.
+      queryClient.setQueryData(["session", child.id], child);
+      void navigate({
+        to: "/runs/$sessionId/review",
+        params: { sessionId: child.id },
+      });
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  const cancel = useMutation({
+    mutationFn: () => api.cancel(params.sessionId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["session", params.sessionId],
+      }),
+    onError: (error) => toast.error(error.message),
+  });
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (!selected || event.target instanceof HTMLInputElement) return;
@@ -237,503 +301,551 @@ export function ReviewPage() {
     accepted: list.filter((n) => n.decision === "accepted").length,
     rejected: list.filter((n) => n.decision === "rejected").length,
   };
-  const totalPercent = (count: number) =>
+  const decided = totals.accepted + totals.rejected;
+  const pct = (count: number) =>
     list.length ? (count / list.length) * 100 : 0;
+  const hasSelection = decisionSelectors.length > 0;
+
   return (
-    <div className="review-shell">
-      <header className="runbar">
-        <div className="brand compact">
-          <div className="brand-mark">
-            <FileCode2 size={17} />
-          </div>
-          <div>
-            <strong>vsnap</strong>
-            <span>{session.data?.repositoryRoot.split("/").at(-1)}</span>
-          </div>
-        </div>
-        <span className="divider" />
-        <div className="command">
-          <span className="status-pill">
-            <span className={`pulse ${active ? "active" : ""}`} />
-            {session.data?.state ?? "loading"}
-          </span>
-          <code>vitest {session.data?.vitestArgs.join(" ")}</code>
-        </div>
-        <div className="run-stats">
-          <span className="stat pass">
-            <b>{session.data?.summary.passed ?? 0}</b> passed
-          </span>
-          <span className="stat fail">
-            <b>{session.data?.summary.failed ?? 0}</b> failed
-          </span>
-          <span className="stat changes">
-            <b>{session.data?.summary.snapshotChanges ?? 0}</b> changes
-          </span>
-        </div>
-        <button
-          type="button"
-          className="icon-button"
-          onClick={() => setThemeMode(nextThemeMode(themeMode))}
-          aria-label={`Theme: ${themeMode}. Switch theme`}
-          title={`Theme: ${themeMode} (${resolvedTheme})`}
-        >
-          {themeMode === "system" ? (
-            <Monitor size={16} />
-          ) : themeMode === "dark" ? (
-            <Moon size={16} />
-          ) : (
-            <Sun size={16} />
-          )}
-        </button>
-        {active ? (
-          <button
-            type="button"
-            className="button subtle"
-            onClick={() => api.cancel(params.sessionId)}
-          >
-            <Square size={13} /> Cancel
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="button subtle"
-            onClick={() => api.rerun(params.sessionId)}
-          >
-            <RotateCcw size={13} /> Rerun
-          </button>
-        )}
-      </header>
-      <div className="workspace">
-        <aside className="tree-panel">
-          <div className="panel-title">
-            <div>
-              <span className="kicker">Candidate index</span>
-              <strong>
-                {grouping === "family" ? "Change families" : "Snapshot tests"}
-              </strong>
+    <TooltipProvider>
+      <div className="review-shell flex h-screen flex-col overflow-hidden">
+        {/* Top app bar */}
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-8 items-center justify-center rounded-md border bg-card">
+              <FileCode2 className="size-4" />
             </div>
-            <span className="count">{list.length}</span>
-          </div>
-          <fieldset
-            className="grouping-row segmented"
-            aria-label="Group changes by"
-          >
-            {(["family", "test"] as const).map((value) => (
-              <button
-                type="button"
-                key={value}
-                className={grouping === value ? "selected" : ""}
-                onClick={() => {
-                  setGrouping(value);
-                  setSelected(undefined);
-                }}
-              >
-                {value === "family" ? "Families" : "Tests"}
-              </button>
-            ))}
-          </fieldset>
-          <div className="search">
-            <Search size={14} />
-            <input
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              placeholder={
-                grouping === "family"
-                  ? "Filter change families…"
-                  : "Filter tests and entries…"
-              }
-            />
-          </div>
-          <div className="filter-row">
-            {[undefined, "pending", "accepted", "rejected"].map((value) => (
-              <button
-                type="button"
-                key={value ?? "all"}
-                className={status === value ? "selected" : ""}
-                onClick={() => setStatus(value)}
-              >
-                {value ?? "all"}
-              </button>
-            ))}
-          </div>
-          <div className="virtual-list" ref={scrollRef}>
-            <div
-              style={{
-                height: virtualizer.getTotalSize(),
-                position: "relative",
-              }}
-            >
-              {virtualizer.getVirtualItems().map((row) => {
-                const node = list[row.index];
-                if (!node) return null;
-                return (
-                  <button
-                    type="button"
-                    key={node.id}
-                    className={`tree-row ${node.decision} ${node.changeType ?? ""} ${selected === node.id || node.entryId === selected ? "active" : ""}`}
-                    style={{ transform: `translateY(${row.start}px)` }}
-                    onClick={() => setSelected(node.id)}
-                  >
-                    <span className={`decision-dot ${node.decision}`} />
-                    <span>
-                      <strong>{node.label}</strong>
-                      <small>
-                        {node.kind === "family"
-                          ? `${node.childCount} occurrence${node.childCount === 1 ? "" : "s"} · ${node.testCount ?? 0} test${node.testCount === 1 ? "" : "s"}`
-                          : `${node.changeType ? `${node.changeType} · ` : ""}${node.childCount} snapshot${node.childCount === 1 ? "" : "s"}`}
-                      </small>
-                    </span>
-                    <span
-                      className={`tree-badge ${node.changeType ?? ""}`}
-                      aria-hidden="true"
-                    >
-                      {changeGlyph(node.changeType)}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </aside>
-        <main className="diff-panel">
-          <div className="diff-toolbar">
-            <div>
-              <span className="breadcrumb">
-                {activeNode?.kind === "family"
-                  ? "EXACT CHANGE FAMILY"
-                  : "TEST REVIEW"}
-              </span>
-              <h1>
-                {activeNode?.kind === "family"
-                  ? activeNode.label
-                  : (review.data?.test?.name ?? "Choose a snapshot change")}
-              </h1>
-            </div>
-            <div className="toolbar-actions">
-              <div className="segmented">
-                <button
-                  type="button"
-                  className={layout === "split" ? "selected" : ""}
-                  onClick={() => setLayout("split")}
-                >
-                  <Columns2 size={14} /> Split
-                </button>
-                <button
-                  type="button"
-                  className={layout === "unified" ? "selected" : ""}
-                  onClick={() => setLayout("unified")}
-                >
-                  Unified
-                </button>
+            <div className="leading-tight">
+              <div className="text-sm font-semibold">vsnap</div>
+              <div className="max-w-40 truncate text-xs text-muted-foreground">
+                {session.data?.repositoryRoot.split("/").at(-1)}
               </div>
             </div>
           </div>
-          <div className="diff-scroll">
-            {review.data ? (
-              <div className="test-review-stack">
-                {activeNode?.kind === "family" ? (
-                  <section className="family-summary">
-                    <div>
-                      <span className="kicker">Compacted review</span>
-                      <strong>{activeNode.label}</strong>
-                      <p>
-                        Every occurrence has this complete set of exact changes;
-                        unchanged context may differ.
-                      </p>
-                    </div>
-                    <div className="family-metrics">
-                      <span>
-                        <b>{activeNode.childCount}</b> occurrences
+
+          <Separator orientation="vertical" className="!h-6" />
+
+          <div className="flex min-w-0 items-center gap-2.5">
+            <Badge
+              variant={active ? "secondary" : "outline"}
+              className="gap-1.5 capitalize"
+            >
+              <span
+                className={`size-1.5 rounded-full ${active ? "animate-pulse bg-info" : "bg-success"}`}
+              />
+              {session.data?.state ?? "loading"}
+            </Badge>
+            <code className="hidden truncate font-mono text-xs text-muted-foreground md:block">
+              vitest {session.data?.vitestArgs.join(" ")}
+            </code>
+          </div>
+
+          <div className="ml-auto flex items-center gap-4">
+            <div className="hidden items-center gap-3.5 text-xs lg:flex">
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <span className="size-1.5 rounded-full bg-success" />
+                <b className="font-semibold text-foreground tabular-nums">
+                  {session.data?.summary.passed ?? 0}
+                </b>{" "}
+                passed
+              </span>
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <span className="size-1.5 rounded-full bg-destructive" />
+                <b className="font-semibold text-foreground tabular-nums">
+                  {session.data?.summary.failed ?? 0}
+                </b>{" "}
+                failed
+              </span>
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <span className="size-1.5 rounded-full bg-info" />
+                <b className="font-semibold text-foreground tabular-nums">
+                  {session.data?.summary.snapshotChanges ?? 0}
+                </b>{" "}
+                changes
+              </span>
+            </div>
+
+            <Separator orientation="vertical" className="!h-6" />
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  onClick={() => setThemeMode(nextThemeMode(themeMode))}
+                  aria-label={`Theme: ${themeMode}. Switch theme`}
+                >
+                  {themeMode === "system" ? (
+                    <Monitor />
+                  ) : themeMode === "dark" ? (
+                    <Moon />
+                  ) : (
+                    <Sun />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="capitalize">
+                Theme: {themeMode} ({resolvedTheme})
+              </TooltipContent>
+            </Tooltip>
+
+            {active ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={cancel.isPending}
+                onClick={() => cancel.mutate()}
+              >
+                {cancel.isPending ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <Square />
+                )}
+                {cancel.isPending ? "Cancelling…" : "Cancel"}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={rerun.isPending}
+                onClick={() => rerun.mutate()}
+              >
+                {rerun.isPending ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <RotateCcw />
+                )}
+                {rerun.isPending ? "Starting…" : "Rerun"}
+              </Button>
+            )}
+          </div>
+        </header>
+
+        {active && session.data ? (
+          <RunProgress
+            session={session.data}
+            events={liveEvents}
+            runningTests={runningTests}
+          />
+        ) : null}
+
+        {/* Workspace */}
+        <div className="workspace flex min-h-0 flex-1 overflow-hidden">
+          {/* Left: change index */}
+          <aside className="tree-panel flex w-80 shrink-0 flex-col border-r">
+            <div className="flex flex-col gap-3 border-b p-3">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-sm font-medium">
+                  {grouping === "family" ? "Change families" : "Snapshot tests"}
+                </span>
+                <Badge variant="secondary" className="tabular-nums">
+                  {list.length}
+                </Badge>
+              </div>
+              <ToggleGroup
+                type="single"
+                value={grouping}
+                onValueChange={(value) => {
+                  if (!value) return;
+                  setGrouping(value as "family" | "test");
+                  setSelected(undefined);
+                }}
+                className="w-full"
+              >
+                <ToggleGroupItem value="family" className="flex-1">
+                  Families
+                </ToggleGroupItem>
+                <ToggleGroupItem value="test" className="flex-1">
+                  Tests
+                </ToggleGroupItem>
+              </ToggleGroup>
+              <div className="relative">
+                <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  className="h-9 pl-8"
+                  placeholder={
+                    grouping === "family"
+                      ? "Filter change families…"
+                      : "Filter tests and entries…"
+                  }
+                />
+              </div>
+              <ToggleGroup
+                type="single"
+                value={status ?? "all"}
+                onValueChange={(value) =>
+                  setStatus(value === "all" || !value ? undefined : value)
+                }
+                className="w-full"
+              >
+                {["all", "pending", "accepted", "rejected"].map((value) => (
+                  <ToggleGroupItem
+                    key={value}
+                    value={value}
+                    className="flex-1 capitalize"
+                  >
+                    {value}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-auto" ref={scrollRef}>
+              <div
+                className="relative"
+                style={{ height: virtualizer.getTotalSize() }}
+              >
+                {virtualizer.getVirtualItems().map((row) => {
+                  const node = list[row.index];
+                  if (!node) return null;
+                  const isActive =
+                    selected === node.id || node.entryId === selected;
+                  return (
+                    <button
+                      type="button"
+                      key={node.id}
+                      className={`tree-row absolute inset-x-0 top-0 flex h-[60px] items-center gap-3 border-l-2 px-3 text-left transition-colors ${
+                        isActive
+                          ? "border-l-foreground bg-accent"
+                          : "border-l-transparent hover:bg-accent/50"
+                      }`}
+                      style={{ transform: `translateY(${row.start}px)` }}
+                      onClick={() => setSelected(node.id)}
+                    >
+                      <span
+                        className={`size-2 shrink-0 rounded-full ${decisionTone(node.decision)}`}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">
+                          {node.label}
+                        </span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {node.kind === "family"
+                            ? `${node.childCount} occurrence${node.childCount === 1 ? "" : "s"} · ${node.testCount ?? 0} test${node.testCount === 1 ? "" : "s"}`
+                            : `${node.changeType ? `${node.changeType} · ` : ""}${node.childCount} snapshot${node.childCount === 1 ? "" : "s"}`}
+                        </span>
                       </span>
-                      <span>
-                        <b>{activeNode.testCount ?? 0}</b> tests
+                      <span
+                        className={`flex size-5 shrink-0 items-center justify-center rounded-md border font-mono text-xs ${changeTone(node.changeType)}`}
+                        aria-hidden="true"
+                      >
+                        {changeGlyph(node.changeType)}
                       </span>
-                      <span>
-                        <b>{activeNode.fileCount ?? 0}</b> files
-                      </span>
-                    </div>
-                  </section>
-                ) : null}
-                <section className="test-source-section">
-                  <div className="review-section-heading">
-                    <div>
-                      <div>
-                        <strong>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </aside>
+
+          {/* Right: diff + action bar */}
+          <main className="diff-panel flex min-w-0 flex-1 flex-col overflow-hidden">
+            {/* Title row */}
+            <div className="flex h-12 shrink-0 items-center gap-3 border-b px-4">
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                  {activeNode?.kind === "family"
+                    ? "Exact change family"
+                    : "Test review"}
+                </div>
+                <div className="truncate text-sm font-semibold">
+                  {activeNode?.kind === "family"
+                    ? activeNode.label
+                    : (review.data?.test?.name ?? "Choose a snapshot change")}
+                </div>
+              </div>
+              <ToggleGroup
+                type="single"
+                value={layout}
+                onValueChange={(value) =>
+                  value && setLayout(value as "split" | "unified")
+                }
+              >
+                <ToggleGroupItem value="split" className="gap-1.5">
+                  <Columns2 /> Split
+                </ToggleGroupItem>
+                <ToggleGroupItem value="unified" className="gap-1.5">
+                  <Rows2 /> Unified
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+
+            {/* Action bar (decisions) */}
+            <div className="flex h-12 shrink-0 items-center gap-4 border-b bg-muted/40 px-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="hidden h-1.5 w-32 overflow-hidden rounded-full bg-border sm:flex">
+                  <span
+                    className="bg-success transition-[width]"
+                    style={{ width: `${pct(totals.accepted)}%` }}
+                  />
+                  <span
+                    className="bg-destructive transition-[width]"
+                    style={{ width: `${pct(totals.rejected)}%` }}
+                  />
+                  <span
+                    className="bg-warning transition-[width]"
+                    style={{ width: `${pct(totals.pending)}%` }}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  <b className="font-semibold text-foreground tabular-nums">
+                    {decided}
+                  </b>{" "}
+                  / {list.length} decided
+                </span>
+                <div className="hidden items-center gap-2.5 text-xs text-muted-foreground xl:flex">
+                  <span className="flex items-center gap-1">
+                    <span className="size-1.5 rounded-full bg-warning" />
+                    {totals.pending}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="size-1.5 rounded-full bg-success" />
+                    {totals.accepted}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="size-1.5 rounded-full bg-destructive" />
+                    {totals.rejected}
+                  </span>
+                </div>
+              </div>
+
+              <div className="ml-auto flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!hasSelection || decide.isPending}
+                  onClick={() =>
+                    decide.mutate({
+                      selectors: decisionSelectors,
+                      decision: "rejected",
+                    })
+                  }
+                >
+                  <X /> Reject
+                  <Kbd className="ml-0.5">R</Kbd>
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-success text-success-foreground hover:bg-success/90"
+                  disabled={!hasSelection || decide.isPending}
+                  onClick={() =>
+                    decide.mutate({
+                      selectors: decisionSelectors,
+                      decision: "accepted",
+                    })
+                  }
+                >
+                  <Check />
+                  {activeNode?.kind === "family"
+                    ? `Accept ${activeNode.childCount}`
+                    : "Accept"}
+                  <Kbd className="ml-0.5 border-white/30 bg-white/15 text-current">
+                    A
+                  </Kbd>
+                </Button>
+
+                <Separator orientation="vertical" className="!h-6" />
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="sm"
+                      disabled={active || apply.isPending || !totals.accepted}
+                      onClick={() => apply.mutate()}
+                    >
+                      {apply.isPending
+                        ? "Applying…"
+                        : `Apply ${totals.accepted}`}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-64">
+                    {active
+                      ? "Apply unlocks when the run finishes."
+                      : "Only accepted hunks change repository files. Hash-protected · no Git operations."}
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+
+            {/* Scrollable review content */}
+            <div className="diff-scroll min-h-0 flex-1 overflow-auto bg-muted/20 p-4">
+              {review.data ? (
+                <div className="mx-auto flex max-w-4xl flex-col gap-4">
+                  {activeNode?.kind === "family" ? (
+                    <section className="family-summary flex items-center justify-between gap-4 rounded-lg border bg-card p-4">
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                          Compacted review
+                        </div>
+                        <div className="truncate text-sm font-semibold">
+                          {activeNode.label}
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Every occurrence has this complete set of exact
+                          changes; unchanged context may differ.
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-5 text-center">
+                        <div>
+                          <div className="text-lg font-semibold tabular-nums">
+                            {activeNode.childCount}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground uppercase">
+                            occurrences
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-lg font-semibold tabular-nums">
+                            {activeNode.testCount ?? 0}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground uppercase">
+                            tests
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-lg font-semibold tabular-nums">
+                            {activeNode.fileCount ?? 0}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground uppercase">
+                            files
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  <section className="overflow-hidden rounded-lg border bg-card">
+                    <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium">
                           {activeNode?.kind === "family"
                             ? "Representative test source"
                             : "Test source"}
-                        </strong>
-                        <span>{review.data.source.relativePath}</span>
+                        </div>
+                        <div className="truncate font-mono text-xs text-muted-foreground">
+                          {review.data.source.relativePath}
+                        </div>
                       </div>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {[
+                          linkedContextCount
+                            ? `${linkedContextCount} context block${linkedContextCount === 1 ? "" : "s"}`
+                            : null,
+                          linkedHookCount
+                            ? `${linkedHookCount} linked hook${linkedHookCount === 1 ? "" : "s"}`
+                            : null,
+                          "read only",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
                     </div>
-                    <span>
-                      {[
-                        linkedContextCount
-                          ? `${linkedContextCount} context block${linkedContextCount === 1 ? "" : "s"}`
-                          : null,
-                        linkedHookCount
-                          ? `${linkedHookCount} linked hook${linkedHookCount === 1 ? "" : "s"}`
-                          : null,
-                        "read only",
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </span>
-                  </div>
-                  <Suspense
-                    fallback={
-                      <div className="source-inline-loading">
-                        <Code2 size={20} /> Coloring test source…
-                      </div>
-                    }
-                  >
-                    <SourceCodeView
-                      source={review.data.source}
-                      theme={resolvedTheme}
-                    />
-                  </Suspense>
-                </section>
-                <section
-                  className="snapshot-chunks"
-                  aria-label="Snapshot chunks generated by this test"
-                >
-                  <div className="review-section-heading">
-                    <div>
-                      <div>
-                        <strong>
-                          {activeNode?.kind === "family"
-                            ? "Representative snapshot change"
-                            : "Snapshot changes"}
-                        </strong>
-                        <span>Baseline → candidate</span>
-                      </div>
-                    </div>
-                    <span>
-                      {renderedEntries.length} chunk
-                      {renderedEntries.length === 1 ? "" : "s"}
-                    </span>
-                  </div>
-                  {renderedEntries.map((item, index) => (
-                    <article
-                      className="snapshot-chunk"
-                      key={item.entry.entryId}
+                    <Suspense
+                      fallback={
+                        <div className="flex min-h-32 items-center justify-center gap-2 text-sm text-muted-foreground">
+                          <Code2 className="size-5" /> Coloring test source…
+                        </div>
+                      }
                     >
-                      <header className="snapshot-chunk-header">
-                        <div>
-                          <strong className="snapshot-chunk-title">
-                            {item.entry.context.snapshotName ??
-                              `Snapshot ${index + 1}`}
-                          </strong>
-                          <code>{matcherInvocation(item.entry.context)}</code>
-                        </div>
-                        <div>
-                          {item.language === "json" ? (
-                            <span className="language-badge">JSON</span>
-                          ) : null}
-                          <span
-                            className={`change-badge ${item.entry.context.changeType}`}
-                          >
-                            {item.entry.context.changeType}
-                          </span>
-                        </div>
-                      </header>
-                      <FileDiff
-                        fileDiff={item.fileDiff}
-                        options={{
-                          diffStyle: layout,
-                          theme: {
-                            dark: "one-dark-pro",
-                            light: "github-light",
-                          },
-                          lineDiffType:
-                            Math.max(
-                              item.entry.baseline.length,
-                              item.entry.candidate.length,
-                            ) > 500_000
-                              ? "none"
-                              : "word-alt",
-                          hunkSeparators: "line-info",
-                        }}
+                      <SourceCodeView
+                        source={review.data.source}
+                        theme={resolvedTheme}
                       />
-                    </article>
-                  ))}
-                </section>
-              </div>
-            ) : review.isError ? (
-              <div className="diff-empty source-error">
-                <FileCode2 size={36} />
-                <strong>Test review unavailable</strong>
-                <span>{review.error.message}</span>
-              </div>
-            ) : (
-              <div className="diff-empty">
-                <FileCode2 size={36} />
-                <strong>
-                  {selected ? "Loading test review…" : "No snapshot selected"}
-                </strong>
-                <span>
-                  Select a change to see its exact test source and snapshot
-                  diff.
-                </span>
-              </div>
-            )}
-          </div>
-        </main>
-        <aside className="decision-panel">
-          <div className="panel-title">
-            <div>
-              <span className="kicker">Review state</span>
-              <strong>Decisions</strong>
-            </div>
-            <span className="count">{list.length}</span>
-          </div>
-          <div className="decision-body">
-            <div className="decision-progress">
-              <div className="decision-progress-bar">
-                <span
-                  className="seg-accepted"
-                  style={{ width: `${totalPercent(totals.accepted)}%` }}
-                />
-                <span
-                  className="seg-rejected"
-                  style={{ width: `${totalPercent(totals.rejected)}%` }}
-                />
-                <span
-                  className="seg-pending"
-                  style={{ width: `${totalPercent(totals.pending)}%` }}
-                />
-              </div>
-              <div className="decision-progress-caption">
-                <span>Review progress</span>
-                <span>
-                  <b>{totals.accepted + totals.rejected}</b> / {list.length}{" "}
-                  decided
-                </span>
-              </div>
-            </div>
-            <div className="decision-totals">
-              <div>
-                <strong>{totals.pending}</strong>
-                <span>Pending</span>
-              </div>
-              <div>
-                <strong>{totals.accepted}</strong>
-                <span>Accepted</span>
-              </div>
-              <div>
-                <strong>{totals.rejected}</strong>
-                <span>Rejected</span>
-              </div>
-            </div>
-            <div className="decision-actions">
-              <button
-                type="button"
-                disabled={decisionSelectors.length === 0 || decide.isPending}
-                className="accept"
-                onClick={() =>
-                  decide.mutate({
-                    selectors: decisionSelectors,
-                    decision: "accepted",
-                  })
-                }
-              >
-                <Check size={16} />
-                {activeNode?.kind === "family"
-                  ? `Accept ${activeNode.childCount} occurrences`
-                  : "Accept test snapshots"}{" "}
-                <kbd>A</kbd>
-              </button>
-              <button
-                type="button"
-                disabled={decisionSelectors.length === 0 || decide.isPending}
-                className="reject"
-                onClick={() =>
-                  decide.mutate({
-                    selectors: decisionSelectors,
-                    decision: "rejected",
-                  })
-                }
-              >
-                <X size={16} />
-                {activeNode?.kind === "family"
-                  ? `Reject ${activeNode.childCount} occurrences`
-                  : "Reject test snapshots"}{" "}
-                <kbd>R</kbd>
-              </button>
-            </div>
-            <div className="notice">
-              <strong>
-                <Info size={13} /> Incremental apply
-              </strong>
-              <p>
-                Only accepted hunks change repository files. Pending candidates
-                stay in this session after the revision advances.
-              </p>
-            </div>
-            <div className="live-card">
-              <span className="kicker">
-                <Play size={12} /> Live activity
-              </span>
-              {Object.values(live.runningTests).length === 0 &&
-              live.console.length === 0 ? (
-                <span className="live-idle">Idle — no live output</span>
-              ) : null}
-              {Object.values(live.runningTests)
-                .slice(0, 3)
-                .map((name) => (
-                  <div className="live-test" key={name}>
-                    <Play size={11} />
-                    {name}
+                    </Suspense>
+                  </section>
+
+                  <section
+                    className="flex flex-col gap-3"
+                    aria-label="Snapshot chunks generated by this test"
+                  >
+                    <div className="flex items-center justify-between gap-3 px-1">
+                      <div className="text-sm font-medium">
+                        {activeNode?.kind === "family"
+                          ? "Representative snapshot change"
+                          : "Snapshot changes"}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {renderedEntries.length} chunk
+                        {renderedEntries.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    {renderedEntries.map((item, index) => (
+                      <article
+                        className="snapshot-chunk overflow-hidden rounded-lg border bg-card"
+                        key={item.entry.entryId}
+                      >
+                        <header className="flex items-center justify-between gap-3 border-b bg-muted/40 px-4 py-2.5">
+                          <div className="flex min-w-0 flex-col gap-0.5">
+                            <span className="truncate text-sm font-medium">
+                              {item.entry.context.snapshotName ??
+                                `Snapshot ${index + 1}`}
+                            </span>
+                            <code className="truncate font-mono text-xs text-muted-foreground">
+                              {matcherInvocation(item.entry.context)}
+                            </code>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            {item.language === "json" ? (
+                              <Badge variant="outline">JSON</Badge>
+                            ) : null}
+                            <span
+                              className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase ${changeTone(item.entry.context.changeType)}`}
+                            >
+                              {item.entry.context.changeType}
+                            </span>
+                          </div>
+                        </header>
+                        <FileDiff
+                          fileDiff={item.fileDiff}
+                          options={{
+                            diffStyle: layout,
+                            theme: {
+                              dark: "one-dark-pro",
+                              light: "github-light",
+                            },
+                            lineDiffType:
+                              Math.max(
+                                item.entry.baseline.length,
+                                item.entry.candidate.length,
+                              ) > 500_000
+                                ? "none"
+                                : "word-alt",
+                            hunkSeparators: "line-info",
+                          }}
+                        />
+                      </article>
+                    ))}
+                  </section>
+                </div>
+              ) : review.isError ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+                  <FileCode2 className="size-9 text-muted-foreground" />
+                  <div className="text-sm font-semibold">
+                    Test review unavailable
                   </div>
-                ))}
-              {live.console.slice(-3).map((event) => (
-                <code key={event.sequence}>
-                  {String(event.payload.content).trim()}
-                </code>
-              ))}
+                  <div className="max-w-80 text-xs text-muted-foreground">
+                    {review.error.message}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+                  <FileCode2 className="size-9 text-muted-foreground" />
+                  <div className="text-sm font-semibold">
+                    {selected ? "Loading test review…" : "No snapshot selected"}
+                  </div>
+                  <div className="max-w-80 text-xs text-muted-foreground">
+                    Select a change to see its exact test source and snapshot
+                    diff.
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="shortcuts-card">
-              <span className="kicker">Keyboard</span>
-              <div className="shortcut-row">
-                <span>Navigate entries</span>
-                <span>
-                  <kbd>J</kbd>
-                  <kbd>K</kbd>
-                </span>
-              </div>
-              <div className="shortcut-row">
-                <span>Accept snapshots</span>
-                <kbd>A</kbd>
-              </div>
-              <div className="shortcut-row">
-                <span>Reject snapshots</span>
-                <kbd>R</kbd>
-              </div>
-            </div>
-          </div>
-          <div className="apply-block">
-            <div className="apply-summary">
-              <span>Ready to apply</span>
-              <span>
-                <b>{totals.accepted}</b> accepted
-              </span>
-            </div>
-            <button
-              type="button"
-              disabled={active || apply.isPending}
-              className="button primary"
-              onClick={() => apply.mutate()}
-            >
-              {apply.isPending ? "Applying…" : "Preview & apply accepted"}
-            </button>
-            <small>
-              {active
-                ? "Apply unlocks when the run finishes"
-                : "Hash-protected · no Git operations"}
-            </small>
-          </div>
-        </aside>
+          </main>
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }

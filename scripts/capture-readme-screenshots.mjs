@@ -82,7 +82,7 @@ try {
 
   // Detail: a single test's source, linked hooks, and both snapshot diffs.
   await withSession(resolve("examples/basic-vitest"), 1000, async (page) => {
-    await page.getByRole("button", { name: "Tests", exact: true }).click();
+    await page.getByText("Tests", { exact: true }).click();
     await page
       .getByRole("button", {
         name: /demo API request review > lists active customers/i,

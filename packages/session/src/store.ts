@@ -1,6 +1,5 @@
 import {
   appendFile,
-  chmod,
   open,
   readdir,
   readFile,
@@ -302,7 +301,6 @@ export class SessionStore {
     RunEventSchema.parse(event);
     const path = join(this.sessionDirectory(session), "events.ndjson");
     await appendFile(path, `${JSON.stringify(event)}\n`, { mode: 0o600 });
-    await chmod(path, 0o600);
   }
 
   async readEvents(

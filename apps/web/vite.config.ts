@@ -8,6 +8,10 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: /^@\//,
+        replacement: `${fileURLToPath(new URL("./src", import.meta.url))}/`,
+      },
+      {
         find: /^shiki$/,
         replacement: fileURLToPath(
           new URL("./src/shiki-bundle.ts", import.meta.url),
