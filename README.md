@@ -12,10 +12,6 @@ snapshot candidates in the OS cache. Snapshot files in the repository are not
 changed during the run. Accepted changes reach them only when you run
 `vsnap apply` or choose **Preview & apply accepted** in the UI.
 
-> **Pre-release:** the source demo works today. The `vitest-snapshot-tools`
-> package has not been published to npm yet; the install command below applies
-> after the first release.
-
 ![The vitest-snapshot-tools review workspace showing test source, two snapshot diffs, and explicit review controls](docs/images/review-workspace.png)
 
 ## Why use it?
@@ -48,8 +44,7 @@ or outside a Git repository.
 
 ## Install
 
-After the first npm release, add the tool beside Vitest in the project you want
-to review:
+Add the tool beside Vitest in the project you want to review:
 
 ```sh
 pnpm add -D vitest-snapshot-tools
@@ -179,7 +174,7 @@ repository.
 
 ## Current limitations
 
-The first release intentionally supports a narrow, predictable workflow:
+The current version intentionally supports a narrow, predictable workflow:
 
 - Vitest 4 in Node mode only
 - External `.snap` files and `toMatchFileSnapshot` file snapshots
