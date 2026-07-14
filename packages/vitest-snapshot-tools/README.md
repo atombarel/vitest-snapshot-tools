@@ -30,10 +30,10 @@ Everything after `--` is passed to Vitest.
 ## Agent skill and token-efficient review
 
 A repeated API or rendering change can appear in hundreds of snapshots. Instead
-of sending every diff through an agent, the CLI groups hunks with exactly the
-same added and removed lines. The agent reviews one representative diff and can
-accept or reject all occurrences with one `family_...` selector. Unique changes
-remain separate.
+of sending every diff through an agent, the CLI groups snapshot entries with
+the same complete set of added and removed lines. The agent reviews one
+representative diff and can accept or reject all occurrences with one
+`family_...` selector. Unique changes remain separate.
 
 ```sh
 npx vitest-snapshot-tools skill install

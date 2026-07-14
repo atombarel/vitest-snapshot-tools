@@ -191,7 +191,7 @@ export interface ReviewNode {
   changeType?: ChangeType;
   status?: string;
   childCount: number;
-  /** Exact diff fingerprint when this node represents a change family. */
+  /** Exact complete-entry diff fingerprint for a change family. */
   familyHash?: string;
   testCount?: number;
   fileCount?: number;

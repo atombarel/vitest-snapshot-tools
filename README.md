@@ -72,12 +72,13 @@ Snapshot updates are unusually expensive—especially for coding agents. A
 one-line API change can fail hundreds of tests, and sending every nearly
 identical diff to a model wastes context, tool calls, and tokens.
 
-`vitest-snapshot-tools` fingerprints the exact added and removed lines in every
-hunk and groups identical fingerprints into **change families**. You inspect one
-representative diff, see how many occurrences, tests, and files it affects, and
-accept or reject the entire exact family with a single decision. Singletons and
-genuine outliers stay separate, so compaction never hides a unique change or
-relies on a model guessing that two diffs are equivalent.
+`vitest-snapshot-tools` fingerprints the complete set of exact added and removed
+lines in each snapshot entry and groups identical full diffs into **change
+families**. You inspect one representative diff, see how many occurrences,
+tests, and files it affects, and accept or reject the entire exact family with a
+single decision. Multi-hunk changes stay together, while singletons and genuine
+outliers remain separate, so compaction never hides a unique change or relies
+on a model guessing that two diffs are equivalent.
 
 For the bundled 100-test scale example, the review workload shrinks like this:
 
@@ -133,9 +134,9 @@ snapshots or when an automated agent is doing the review.
 
 1. **Capture** — run Vitest with an overlay snapshot environment and store the
    baseline and candidate outside the repository.
-2. **Review** — compact identical added and removed lines into exact change
-   families, or inspect the imports, owning suite, linked hooks, focused test,
-   snapshot matcher, and full diff.
+2. **Review** — compact identical complete snapshot-entry diffs into exact
+   change families, or inspect the imports, owning suite, linked hooks, focused
+   test, snapshot matcher, and full diff.
 3. **Decide** — accept or reject a family, file, test, entry, or individual diff
    hunk.
 4. **Preview** — inspect the exact patch assembled from accepted hunks.

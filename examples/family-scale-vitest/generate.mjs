@@ -79,10 +79,21 @@ function exchangeFor(index, candidate) {
   return {
     externalApiCalls: [
       {
+        baseUrl:
+          route === "customers"
+            ? candidate
+              ? "https://records-v2.example.test"
+              : "https://records-v1.example.test"
+            : "https://records-v2.example.test",
         method: "GET",
-        url: `https://records.example.test/${route}/${index}`,
+        path: `/${route}/${index}`,
         headers: {
-          accept: "application/json",
+          accept:
+            route === "customers"
+              ? candidate
+                ? "application/vnd.records.v2+json"
+                : "application/vnd.records.v1+json"
+              : "application/vnd.records.v2+json",
           "x-api-version":
             route === "customers"
               ? candidate
@@ -90,6 +101,17 @@ function exchangeFor(index, candidate) {
                 : "2026-06-01"
               : "2026-07-14",
           "x-request-id": requestId,
+        },
+        query: {
+          expand: "owner,plan",
+          includeInactive: false,
+          limit: 20,
+          locale: "en-US",
+          sort: "updatedAt:desc",
+        },
+        retry: {
+          attempts: route === "customers" ? (candidate ? 3 : 2) : 3,
+          backoffMs: 100,
         },
       },
     ],
@@ -159,6 +181,8 @@ const contracts = `export interface HttpRequest {
   method: "GET" | "POST";
   path: string;
   headers: Record<string, string>;
+  query: Record<string, unknown>;
+  retry: { attempts: number; backoffMs: number };
 }
 
 export interface LogRecord {
@@ -187,8 +211,9 @@ export function createRequestLogger(requestId: string) {
 const externalApiMock = `import type { HttpRequest } from "./contracts";
 
 export interface ExternalApiCall {
+  baseUrl: string;
   method: "GET";
-  url: string;
+  path: string;
   headers: Record<string, string>;
 }
 
@@ -212,13 +237,22 @@ export function createExternalApiMock() {
   return {
     async get(route: string, id: number, request: HttpRequest) {
       calls.push({
+        baseUrl: "https://records-v2.example.test",
         method: "GET",
-        url: \`https://records.example.test/\${route}/\${id}\`,
+        path: \`/\${route}/\${id}\`,
         headers: {
-          accept: "application/json",
+          accept: "application/vnd.records.v2+json",
           "x-api-version": "2026-07-14",
           "x-request-id": request.headers["x-request-id"],
         },
+        query: {
+          expand: "owner,plan",
+          includeInactive: false,
+          limit: 20,
+          locale: "en-US",
+          sort: "updatedAt:desc",
+        },
+        retry: { attempts: 3, backoffMs: 100 },
       });
       return resource(route, id);
     },

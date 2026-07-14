@@ -43,8 +43,8 @@ assert.equal(listed.data.total, 16);
 assert.deepEqual(
   new Set(listed.data.items.slice(0, 3).map((item) => item.label)),
   new Set([
+    "2 related changes · 3 removed · 3 added",
     '"upstreamContract": "customers-2026-06-01", → "upstreamContract": "customers-2026-07-14",',
-    '"x-api-version": "2026-06-01", → "x-api-version": "2026-07-14",',
     'Added "apiVersion": "2026-07-14",',
   ]),
 );

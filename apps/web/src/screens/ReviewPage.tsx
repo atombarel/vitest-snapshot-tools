@@ -122,11 +122,8 @@ export function ReviewPage() {
       (review.data?.entries ?? [])
         .filter(
           (entry) =>
-            !activeNode?.familyHash ||
-            entry.hunks.some(
-              (hunk) =>
-                (hunk.changeHash ?? hunk.contentHash) === activeNode.familyHash,
-            ),
+            activeNode?.kind !== "family" ||
+            entry.entryId === activeNode.entryId,
         )
         .map((entry) => {
           const language = inferSnapshotLanguage(
@@ -154,7 +151,7 @@ export function ReviewPage() {
             ),
           };
         }),
-    [activeNode?.familyHash, review.data],
+    [activeNode?.entryId, activeNode?.kind, review.data],
   );
   const visibleEntryIds = useMemo(
     () => review.data?.entries.map((entry) => entry.entryId) ?? [],
@@ -440,8 +437,8 @@ export function ReviewPage() {
                       <span className="kicker">Compacted review</span>
                       <strong>{activeNode.label}</strong>
                       <p>
-                        Every occurrence has these exact added and removed
-                        lines; unchanged context may differ.
+                        Every occurrence has this complete set of exact changes;
+                        unchanged context may differ.
                       </p>
                     </div>
                     <div className="family-metrics">

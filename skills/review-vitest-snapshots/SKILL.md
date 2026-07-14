@@ -10,10 +10,11 @@ Use `vsnap` as the sole interface to candidate snapshots. Never edit real snapsh
 ## Minimize model context
 
 Start with exact families. Do not enumerate or diff every entry when multiple
-hunks belong to the same family. A family is an exact added/removed-line
-fingerprint, not a semantic guess: inspect its representative `entryId` once,
-check its occurrence, test, and file counts, then make one family decision when
-the change is intended across that scope. Review singleton families separately.
+entries have the same complete diff. A family fingerprints the ordered set of
+exact added/removed-line hunks for a snapshot entry, not a semantic guess:
+inspect its representative `entryId` once, check its occurrence, test, and file
+counts, then make one family decision when the change is intended across that
+scope. Review singleton families separately.
 
 This ordering reduces CLI payloads, repeated diff content, tool calls, and model
 tokens without weakening the apply safeguards.
@@ -45,8 +46,8 @@ Do not skip preview. Pending hunks remain at their baseline in preview and remai
 
 Use typed `family_`, `file_`, `test_`, `entry_`, and `hunk_` IDs returned by
 `list`; use `--all` only when the request clearly approves the entire run.
-Family selectors are exact added/removed-line matches and expand to their
-underlying hunks.
+Family selectors are exact complete-entry diff matches and expand to every
+underlying hunk in each matching entry.
 Commands automatically forward to an authenticated active UI owner when
 present and otherwise operate directly under a session lock.
 

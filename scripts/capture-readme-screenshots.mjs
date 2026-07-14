@@ -60,7 +60,11 @@ try {
   // so the summary, representative test source, and diff fit in one shot.
   await withSession(familyScaleRoot, 1360, async (page) => {
     await page.getByText("Change families", { exact: true }).waitFor();
-    await page.locator(".tree-row", { hasText: '"x-api-version"' }).click();
+    await page
+      .locator(".tree-row", {
+        hasText: "2 related changes · 3 removed · 3 added",
+      })
+      .click();
     await page.locator(".family-summary").waitFor();
     await page.locator(".source-code.ready").waitFor();
     await page

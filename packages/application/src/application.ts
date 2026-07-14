@@ -66,8 +66,28 @@ export function createSnapshotApplication(
   const controllers = new Map<string, AbortController>();
   const exactFamilyId = (contentHash: string) =>
     stableId("family", contentHash);
-  const familyHash = (hunk: ReviewIndex["hunks"][number]) =>
+  const hunkChangeHash = (hunk: ReviewIndex["hunks"][number]) =>
     hunk.changeHash ?? hunk.contentHash;
+  const exactFamilyIndex = (index: ReviewIndex) => {
+    const hunksByEntry = new Map<string, typeof index.hunks>();
+    for (const hunk of index.hunks) {
+      const hunks = hunksByEntry.get(hunk.entryId);
+      if (hunks) hunks.push(hunk);
+      else hunksByEntry.set(hunk.entryId, [hunk]);
+    }
+    const hashByEntry = new Map<string, string>();
+    for (const [entryId, hunks] of hunksByEntry) {
+      hunks.sort(
+        (left, right) =>
+          left.oldStart - right.oldStart || left.newStart - right.newStart,
+      );
+      hashByEntry.set(
+        entryId,
+        sha256(JSON.stringify(hunks.map((hunk) => hunkChangeHash(hunk)))),
+      );
+    }
+    return { hashByEntry, hunksByEntry };
+  };
 
   async function entryValues(
     session: ReviewSession,
@@ -93,12 +113,11 @@ export function createSnapshotApplication(
     selector: string,
   ): StoredReviewEntry[] {
     if (selector.startsWith("family_")) {
-      const entryIds = new Set(
-        index.hunks
-          .filter((hunk) => exactFamilyId(familyHash(hunk)) === selector)
-          .map((hunk) => hunk.entryId),
-      );
-      return index.entries.filter((entry) => entryIds.has(entry.id));
+      const familyIndex = exactFamilyIndex(index);
+      return index.entries.filter((entry) => {
+        const fingerprint = familyIndex.hashByEntry.get(entry.id);
+        return Boolean(fingerprint && exactFamilyId(fingerprint) === selector);
+      });
     }
     if (selector.startsWith("entry_"))
       return index.entries.filter((entry) => entry.id === selector);
@@ -336,23 +355,19 @@ export function createSnapshotApplication(
         return entry.testName?.replace(/ > [^>]+$/, "") ?? entry.key;
       };
       if (input.kind === "family") {
-        const groups = new Map<string, typeof index.hunks>();
-        const entryById = new Map(
-          index.entries.map((entry) => [entry.id, entry]),
-        );
+        const familyIndex = exactFamilyIndex(index);
+        const groups = new Map<string, StoredReviewEntry[]>();
         const fileById = new Map(index.files.map((file) => [file.id, file]));
-        for (const hunk of index.hunks) {
-          const fingerprint = familyHash(hunk);
+        for (const entry of index.entries) {
+          const fingerprint = familyIndex.hashByEntry.get(entry.id);
+          if (!fingerprint) continue;
           const group = groups.get(fingerprint);
-          if (group) group.push(hunk);
-          else groups.set(fingerprint, [hunk]);
+          if (group) group.push(entry);
+          else groups.set(fingerprint, [entry]);
         }
-        for (const [contentHash, hunks] of groups) {
-          const entryIds = [...new Set(hunks.map((hunk) => hunk.entryId))];
-          const entries = entryIds.flatMap((entryId) => {
-            const entry = entryById.get(entryId);
-            return entry ? [entry] : [];
-          });
+        for (const [contentHash, entries] of groups) {
+          const entryIds = entries.map((entry) => entry.id);
+          const hunks = hunksFor(entryIds);
           const testIds = new Set(
             entries.map((entry) => {
               const file = fileById.get(entry.fileId);
@@ -365,24 +380,25 @@ export function createSnapshotApplication(
             }),
           );
           const firstEntry = entries[0];
-          const firstHunk = hunks[0];
+          const representativeHunks = firstEntry
+            ? (familyIndex.hunksByEntry.get(firstEntry.id) ?? [])
+            : [];
+          const firstHunk = representativeHunks[0];
           if (!firstEntry || !firstHunk) continue;
           const changeTypes = new Set(entries.map((entry) => entry.changeType));
           nodes.push({
             id: exactFamilyId(contentHash),
             kind: "family",
             entryId: firstEntry.id,
-            label: firstHunk.summary ?? "Exact snapshot change",
-            decision: deriveDecision(
-              hunks.map((hunk) => ({
-                ...hunk,
-                decision: decisions[hunk.id] ?? ("pending" as const),
-              })),
-            ),
+            label:
+              representativeHunks.length === 1
+                ? (firstHunk.summary ?? "Exact snapshot change")
+                : `${representativeHunks.length} related changes · ${firstHunk.summary ?? "exact snapshot diff"}`,
+            decision: deriveDecision(hunks),
             ...(changeTypes.size === 1
               ? { changeType: firstEntry.changeType }
               : {}),
-            childCount: hunks.length,
+            childCount: entries.length,
             familyHash: contentHash,
             testCount: testIds.size,
             fileCount: new Set(entries.map((entry) => entry.fileId)).size,
@@ -732,17 +748,9 @@ export function createSnapshotApplication(
         const supportedEntryIds = new Set(entries.map((entry) => entry.id));
         const ids = input.selector.startsWith("hunk_")
           ? [input.selector]
-          : input.selector.startsWith("family_")
-            ? index.hunks
-                .filter(
-                  (hunk) =>
-                    supportedEntryIds.has(hunk.entryId) &&
-                    exactFamilyId(familyHash(hunk)) === input.selector,
-                )
-                .map((hunk) => hunk.id)
-            : index.hunks
-                .filter((hunk) => supportedEntryIds.has(hunk.entryId))
-                .map((hunk) => hunk.id);
+          : index.hunks
+              .filter((hunk) => supportedEntryIds.has(hunk.entryId))
+              .map((hunk) => hunk.id);
         if (ids.length === 0)
           throw new VsnapError("SELECTOR_NOT_FOUND", input.selector);
         const decisions = await store.readDecisions(session);
