@@ -76,33 +76,31 @@ export function RunProgress({
         />
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+        {/* Snapshot changes are the point of the tool — lead with them. They
+            surface during the post-test diff phase, so this stays 0 while
+            tests are still executing. */}
+        <span className="inline-flex items-center gap-1.5 rounded-md border border-info/30 bg-info/10 px-2 py-1 font-medium text-info">
+          <FileSearch className="size-3.5" />
+          <b className="tabular-nums">{progress.snapshotChanges}</b> snapshot
+          {progress.snapshotChanges === 1 ? " change" : " changes"}
+        </span>
         <span className="flex items-center gap-1.5 text-muted-foreground">
           <CheckCircle2 className="size-3.5 text-success" />
-          <b className="font-semibold text-foreground tabular-nums">
+          <b className="font-medium text-foreground tabular-nums">
             {progress.passed}
           </b>{" "}
           passed
         </span>
-        <span className="flex items-center gap-1.5 text-muted-foreground">
-          <XCircle
-            className={`size-3.5 ${progress.failed ? "text-destructive" : ""}`}
-          />
-          <b className="font-semibold text-foreground tabular-nums">
-            {progress.failed}
-          </b>{" "}
-          failed
-        </span>
-        <span className="flex items-center gap-1.5 text-muted-foreground">
-          <FileSearch className="size-3.5" />
-          <b className="font-semibold text-foreground tabular-nums">
-            {progress.snapshotChanges}
-          </b>{" "}
-          changes
-        </span>
+        {progress.failed ? (
+          <span className="flex items-center gap-1.5 text-destructive">
+            <XCircle className="size-3.5" />
+            <b className="font-medium tabular-nums">{progress.failed}</b> failed
+          </span>
+        ) : null}
         <span className="flex items-center gap-1.5 text-muted-foreground">
           <Layers className="size-3.5" />
-          <b className="font-semibold text-foreground tabular-nums">
+          <b className="font-medium text-foreground tabular-nums">
             {progress.modulesFinished}
           </b>{" "}
           / {progress.modulesCollected} files

@@ -283,13 +283,22 @@ export function createSnapshotApplication(
         input.vitestArgs ?? parent.vitestArgs,
         parent.id,
       );
-      return runVitestCapture({
+      const controller = new AbortController();
+      controllers.set(child.id, controller);
+      const run = runVitestCapture({
         session: child,
         store,
+        signal: controller.signal,
         ...(options.environmentPath
           ? { environmentPath: options.environmentPath }
           : {}),
-      });
+      }).finally(() => controllers.delete(child.id));
+      // Kick the run off in the background and return the freshly-created child
+      // session immediately (mirrors startRun with headless:false) so the UI can
+      // navigate to it and stream live progress over SSE. Awaiting the run here
+      // would block the HTTP response for its whole duration and defeat that.
+      void run.catch((error) => options.logger?.error(error));
+      return child;
     },
     async listSessions(input?: ListSessionsInput) {
       const root = input?.repositoryRoot ?? process.cwd();

@@ -1,7 +1,7 @@
 import { parseDiffFromFile } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -72,6 +72,7 @@ export function ReviewPage() {
     entryId?: string;
   };
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [selected, setSelected] = useState(params.entryId);
   const [grouping, setGrouping] = useState<"family" | "test">("family");
   const [filter, setFilter] = useState("");
@@ -107,6 +108,16 @@ export function ReviewPage() {
   const liveEvents = live.sessionId === params.sessionId ? live.events : [];
   const runningTests =
     live.sessionId === params.sessionId ? live.runningTests : {};
+  // A rerun navigates to a new child session while keeping this component
+  // mounted; clear selection/filters so nothing stale leaks across.
+  const previousSessionId = useRef(params.sessionId);
+  useEffect(() => {
+    if (previousSessionId.current === params.sessionId) return;
+    previousSessionId.current = params.sessionId;
+    setSelected(undefined);
+    setFilter("");
+    setStatus(undefined);
+  }, [params.sessionId]);
   useEffect(() => {
     const controller = new AbortController();
     const afterSequence = beginLiveSession(params.sessionId);
@@ -238,18 +249,15 @@ export function ReviewPage() {
   });
   const rerun = useMutation({
     mutationFn: () => api.rerun(params.sessionId),
-    onSuccess: (updated) => {
-      // Reflect the freshly-started run immediately instead of waiting for the
-      // next poll, and clear stale live events so progress restarts clean.
-      queryClient.setQueryData(["session", params.sessionId], updated);
-      liveStore.setState((state) => ({
-        ...state,
-        events: [],
-        runningTests: {},
-        console: [],
-      }));
-      void queryClient.invalidateQueries({ queryKey: ["nodes"] });
-      void queryClient.invalidateQueries({ queryKey: ["review"] });
+    onSuccess: (child) => {
+      // rerun() spawns a fresh child session with its own event stream, so
+      // navigate to it: the session/nodes queries and the live SSE all
+      // re-initialise exactly like the first load, showing live progress.
+      queryClient.setQueryData(["session", child.id], child);
+      void navigate({
+        to: "/runs/$sessionId/review",
+        params: { sessionId: child.id },
+      });
     },
     onError: (error) => toast.error(error.message),
   });
