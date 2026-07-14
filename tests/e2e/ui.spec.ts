@@ -29,7 +29,7 @@ test("shows one exact test block above both of its snapshot chunks", async ({
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page
     .getByRole("button", {
-      name: /demo API request review > lists active customers > request log 1/i,
+      name: /demo API request review > lists active customers/i,
     })
     .click();
   await expect(

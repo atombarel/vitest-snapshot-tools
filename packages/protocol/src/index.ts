@@ -181,6 +181,8 @@ export type ReviewNodeKind = "file" | "test" | "entry" | "hunk";
 export interface ReviewNode {
   id: string;
   kind: ReviewNodeKind;
+  /** Entry to open when this node represents a test. */
+  entryId?: string;
   parentId?: string;
   label: string;
   decision: DerivedDecision;
