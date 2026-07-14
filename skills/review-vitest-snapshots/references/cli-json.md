@@ -28,7 +28,7 @@ Failure:
 }
 ```
 
-Session objects include `id`, `revision`, `state`, `parentSessionId` when linked, and aggregate `summary`. Node pages contain `items`, `total`, and optional `nextCursor`. Each node has a typed stable `id`, hierarchy `kind`, `decision`, label, and child count.
+Session objects include `id`, `revision`, `state`, `parentSessionId` when linked, and aggregate `summary`. Node pages contain `items`, `total`, and optional `nextCursor`. Each node has a typed stable `id`, hierarchy `kind`, `decision`, label, and child count. Exact family nodes also include a representative `entryId`, fingerprint, confidence, and affected test/file counts.
 
 Diff data includes `baseline`, `candidate`, and hunks with range fields, a content hash, and decision. Preview data includes the exact repository `patch`, file `operations`, `expectedRevision`, and separate `acceptedHunks`, `rejectedHunks`, and `pendingHunks` arrays. Apply data includes a result code, new revision, written paths, and remaining hunk count.
 

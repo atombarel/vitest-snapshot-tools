@@ -277,6 +277,7 @@ export async function runCli(
     }
     if (command === "list") {
       const requestedKind = option(parts.tool, "--kind") as
+        | "family"
         | "file"
         | "test"
         | "entry"

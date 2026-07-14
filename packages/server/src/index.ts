@@ -151,6 +151,7 @@ export async function createSnapshotServer(
   );
   app.get("/api/v1/sessions/:id/nodes", async (context) => {
     const kind = context.req.query("kind") as
+      | "family"
       | "file"
       | "test"
       | "entry"
@@ -158,12 +159,20 @@ export async function createSnapshotServer(
       | undefined;
     const status = context.req.query("status");
     const cursor = context.req.query("cursor");
+    const limit = z.coerce
+      .number()
+      .int()
+      .positive()
+      .max(10_000)
+      .optional()
+      .parse(context.req.query("limit"));
     return context.json(
       await application.listNodes({
         sessionId: context.req.param("id"),
         ...(kind === undefined ? {} : { kind }),
         ...(status === undefined ? {} : { status }),
         ...(cursor === undefined ? {} : { cursor }),
+        ...(limit === undefined ? {} : { limit }),
       }),
     );
   });

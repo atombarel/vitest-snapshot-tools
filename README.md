@@ -25,9 +25,11 @@ an automated agent is doing the review.
 
 1. **Capture** — run Vitest with an overlay snapshot environment and store the
    baseline and candidate outside the repository.
-2. **Review** — inspect the owning test, linked hooks, snapshot matcher, and
-   baseline-to-candidate diff.
-3. **Decide** — accept or reject a file, test, entry, or individual diff hunk.
+2. **Review** — compact identical added and removed lines into exact change
+   families, or inspect the owning test, linked hooks, snapshot matcher, and
+   full diff.
+3. **Decide** — accept or reject a family, file, test, entry, or individual
+   diff hunk.
 4. **Preview** — inspect the exact patch assembled from accepted hunks.
 5. **Apply** — hash-check the baseline and atomically write only accepted
    changes.
@@ -121,10 +123,11 @@ scripts and agents.
 npx vitest-snapshot-tools run --json -- src/account.test.ts
 
 # Inspect the newest session for this repository
-npx vitest-snapshot-tools list --kind entry --status pending
+npx vitest-snapshot-tools list --kind family --status pending
 npx vitest-snapshot-tools diff entry_... --format unified
 
-# Decide at entry, hunk, test, file, or entire-run scope
+# Decide at family, entry, hunk, test, file, or entire-run scope
+npx vitest-snapshot-tools accept family_...
 npx vitest-snapshot-tools accept entry_...
 npx vitest-snapshot-tools reject hunk_...
 
@@ -145,10 +148,10 @@ pass `--session <session-id>`.
 | `vsnap run -- [vitest args]` | Capture headlessly and print the session ID |
 | `vsnap sessions` | List cached review sessions for the current repository |
 | `vsnap status [session]` | Show run state, revision, and snapshot-change count |
-| `vsnap list [session]` | List file, test, entry, or hunk selectors; filter with `--kind` and `--status` |
+| `vsnap list [session]` | List family, file, test, entry, or hunk selectors; filter with `--kind` and `--status` |
 | `vsnap diff <entry>` | Print an entry as a unified diff or summary |
-| `vsnap accept <selector>` | Accept a file, test, entry, hunk, or `--all` |
-| `vsnap reject <selector>` | Reject a file, test, entry, hunk, or `--all` |
+| `vsnap accept <selector>` | Accept a family, file, test, entry, hunk, or `--all` |
+| `vsnap reject <selector>` | Reject a family, file, test, entry, hunk, or `--all` |
 | `vsnap preview [session]` | Print the decision summary or exact patch with `--format patch` |
 | `vsnap apply [session]` | Write accepted changes while leaving pending work in the session |
 | `vsnap verify [session]` | Run a child capture to check the applied result |

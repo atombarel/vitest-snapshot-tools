@@ -87,6 +87,8 @@ export const DiffHunkSchema = z.object({
   newStart: z.number().int().nonnegative(),
   newLines: z.number().int().nonnegative(),
   contentHash: z.string().length(64),
+  changeHash: z.string().length(64).optional(),
+  summary: z.string().optional(),
   decision: DecisionSchema,
 });
 export type DiffHunk = z.infer<typeof DiffHunkSchema>;
@@ -177,7 +179,7 @@ export interface Page<T> {
   nextCursor?: string;
   total: number;
 }
-export type ReviewNodeKind = "file" | "test" | "entry" | "hunk";
+export type ReviewNodeKind = "family" | "file" | "test" | "entry" | "hunk";
 export interface ReviewNode {
   id: string;
   kind: ReviewNodeKind;
@@ -189,6 +191,11 @@ export interface ReviewNode {
   changeType?: ChangeType;
   status?: string;
   childCount: number;
+  /** Exact diff fingerprint when this node represents a change family. */
+  familyHash?: string;
+  testCount?: number;
+  fileCount?: number;
+  confidence?: "exact";
 }
 export interface EntryContent {
   entryId: string;

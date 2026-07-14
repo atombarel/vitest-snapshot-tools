@@ -43,7 +43,7 @@ export const api = {
   session: (id: string) => request<ReviewSession>(`/api/v1/sessions/${id}`),
   nodes: (id: string, kind?: string, status?: string) =>
     request<Page<ReviewNode>>(
-      `/api/v1/sessions/${id}/nodes?${new URLSearchParams({ ...(kind ? { kind } : {}), ...(status ? { status } : {}) })}`,
+      `/api/v1/sessions/${id}/nodes?${new URLSearchParams({ limit: "10000", ...(kind ? { kind } : {}), ...(status ? { status } : {}) })}`,
     ),
   diff: (id: string, entryId: string) =>
     request<EntryDiff>(`/api/v1/sessions/${id}/entries/${entryId}`),

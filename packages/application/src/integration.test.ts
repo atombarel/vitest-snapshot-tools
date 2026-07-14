@@ -82,6 +82,36 @@ describe("transactional integration", () => {
     });
     expect(review.entries).toHaveLength(2);
     expect(review.source.focus.matcherLines).toHaveLength(2);
+    const familyIndex = await store.readIndex(session);
+    const firstFamilyHunk = familyIndex.hunks[0];
+    const secondFamilyHunk = familyIndex.hunks[1];
+    if (!firstFamilyHunk || !secondFamilyHunk)
+      throw new Error("Expected two indexed hunks");
+    secondFamilyHunk.changeHash =
+      firstFamilyHunk.changeHash ?? firstFamilyHunk.contentHash;
+    if (firstFamilyHunk.summary !== undefined)
+      secondFamilyHunk.summary = firstFamilyHunk.summary;
+    await store.writeIndex(session, familyIndex);
+    const families = await app.listNodes({
+      sessionId: session.id,
+      kind: "family",
+    });
+    expect(families.items).toHaveLength(1);
+    expect(families.items[0]).toMatchObject({
+      kind: "family",
+      confidence: "exact",
+      childCount: 2,
+      testCount: 1,
+      fileCount: 1,
+    });
+    const family = families.items[0];
+    if (!family) throw new Error("Expected one exact change family");
+    const familyDecision = await app.setDecision({
+      sessionId: session.id,
+      selector: family.id,
+      decision: "accepted",
+    });
+    expect(familyDecision.affectedHunks).toHaveLength(2);
     const unsafeIndex = await store.readIndex(session);
     const sourceFile = unsafeIndex.files[0];
     if (!sourceFile) throw new Error("Expected indexed snapshot file");
