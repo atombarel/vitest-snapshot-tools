@@ -43,6 +43,44 @@ export interface RunVitestCaptureOptions {
 const activeRuns = new Map<string, TargetVitest>();
 let runnerBusy = false;
 
+// Test-only: when VSNAP_E2E_RUN_DELAY_MS is set, pause here so e2e tests can
+// observe live progress before a fast run completes. Resolves early on abort.
+async function holdForTestDelay(signal?: AbortSignal): Promise<void> {
+  const ms = Number(process.env.VSNAP_E2E_RUN_DELAY_MS ?? 0);
+  if (!Number.isFinite(ms) || ms <= 0 || signal?.aborted) return;
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+}
+
+async function mapConcurrent<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  visit: (value: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < values.length) {
+      const index = next++;
+      const value = values[index];
+      if (value !== undefined) results[index] = await visit(value);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, values.length) }, worker),
+  );
+  return results;
+}
+
 function snapshotKind(
   relativePath: string,
   baseline: string | null,
@@ -128,15 +166,15 @@ export async function rebuildReviewIndex(
     );
     if (indexed.entries.length === 0) continue;
     index.files.push(indexed.file);
-    for (const entry of indexed.entries) {
-      const baselineBlob =
+    const prepared = await mapConcurrent(indexed.entries, 16, async (entry) => {
+      const [baselineBlob, candidateBlob] = await Promise.all([
         entry.baseline === undefined
           ? undefined
-          : await store.writeBlob(session, entry.baseline);
-      const candidateBlob =
+          : store.writeBlob(session, entry.baseline),
         entry.candidate === undefined
           ? undefined
-          : await store.writeBlob(session, entry.candidate);
+          : store.writeBlob(session, entry.candidate),
+      ]);
       const {
         baseline: _baseline,
         candidate: _candidate,
@@ -148,13 +186,16 @@ export async function rebuildReviewIndex(
       if (baselineBlob !== undefined) storedEntry.baselineBlob = baselineBlob;
       if (candidateBlob !== undefined)
         storedEntry.candidateBlob = candidateBlob;
-      index.entries.push(storedEntry);
       const diff = createEntryDiff(
         entry.id,
         entry.baseline ?? "",
         entry.candidate ?? "",
         decisions,
       );
+      return { entry, storedEntry, diff };
+    });
+    for (const { entry, storedEntry, diff } of prepared) {
+      index.entries.push(storedEntry);
       index.hunks.push(
         ...diff.hunks.map(
           ({
@@ -196,6 +237,10 @@ async function executeVitestCapture(
     state: "collecting",
   };
   await options.store.save(session);
+  // Test seam: hold the run in an active ("collecting") state for a bit so
+  // e2e tests can reliably observe live progress before a fast run finishes.
+  // Never set outside tests, so real runs are unaffected. Aborts promptly.
+  await holdForTestDelay(options.signal);
   const forbidden = session.vitestArgs.some((arg) =>
     /^(--watch|-w|--ui|--api|--browser|--snapshotEnvironment)(?:=|$)/.test(arg),
   );
@@ -219,7 +264,8 @@ async function executeVitestCapture(
     new URL("./environment.js", import.meta.url).pathname;
   let sequence =
     (await options.store.readEvents(session)).at(-1)?.sequence ?? 0;
-  const emit = async (
+  let pendingEventWrites = Promise.resolve();
+  const emit = (
     type: RunEvent["type"],
     payload: Record<string, unknown>,
   ): Promise<void> => {
@@ -231,8 +277,11 @@ async function executeVitestCapture(
       timestamp: new Date().toISOString(),
       payload,
     };
-    await options.store.appendEvent(session, event);
+    pendingEventWrites = pendingEventWrites.then(() =>
+      options.store.appendEvent(session, event),
+    );
     options.onEvent?.(event);
+    return Promise.resolve();
   };
   const reporter = new SnapshotReporter(emit, () =>
     rebuildReviewIndex(session, options.store, emit),
@@ -270,7 +319,7 @@ async function executeVitestCapture(
     await options.store.save(session);
     const started = Date.now();
     await vitest.start(parsed.filter);
-    await rebuildReviewIndex(session, options.store, emit);
+    await pendingEventWrites;
     const index = await options.store.readIndex(session);
     const events = await options.store.readEvents(session);
     const finished = events.filter((event) => event.type === "test.finished");
