@@ -22,8 +22,8 @@
     "node": ">=22.14.0"
   },
   "bin": {
-    "vsnap": "./dist/cli.js",
-    "vitest-snapshot-tools": "./dist/cli.js"
+    "vsnap": "dist/cli.js",
+    "vitest-snapshot-tools": "dist/cli.js"
   },
   "exports": {
     ".": "./dist/index.js",
