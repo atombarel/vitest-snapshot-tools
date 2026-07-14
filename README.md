@@ -21,8 +21,8 @@ apply accepted** in the UI.
 ## Highlights
 
 - **Review once, apply everywhere.** Identical diffs collapse into exact change
-  families, so a 100-failure run can become 14 decisions and a 5,200-snapshot
-  suite collapses to the distinct changes it actually contains.
+  families, so a 100-failure run can become 14 decisions and a thousand-failure
+  run collapses to the handful of distinct changes it actually contains.
 - **Nothing is written during capture.** A custom snapshot environment redirects
   Vitest's baseline and candidate output to a private cache. Repository files
   change only on an explicit `apply`.
