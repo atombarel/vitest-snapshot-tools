@@ -6,11 +6,10 @@ import { useStore } from "@tanstack/react-store";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Check,
-  ChevronDown,
-  CircleDot,
   Code2,
   Columns2,
   FileCode2,
+  Info,
   Monitor,
   Moon,
   Play,
@@ -33,6 +32,12 @@ const SourceCodeView = lazy(() =>
     default: module.SourceCodeView,
   })),
 );
+
+function changeGlyph(changeType?: string): string {
+  if (changeType === "added") return "+";
+  if (changeType === "deleted") return "−";
+  return "~";
+}
 
 export function ReviewPage() {
   const params = useParams({ strict: false }) as {
@@ -206,6 +211,8 @@ export function ReviewPage() {
     accepted: list.filter((n) => n.decision === "accepted").length,
     rejected: list.filter((n) => n.decision === "rejected").length,
   };
+  const totalPercent = (count: number) =>
+    list.length ? (count / list.length) * 100 : 0;
   return (
     <div className="review-shell">
       <header className="runbar">
@@ -218,19 +225,24 @@ export function ReviewPage() {
             <span>{session.data?.repositoryRoot.split("/").at(-1)}</span>
           </div>
         </div>
+        <span className="divider" />
         <div className="command">
-          <span className={`pulse ${active ? "active" : ""}`} />
-          <strong>{session.data?.state ?? "loading"}</strong>
+          <span className="status-pill">
+            <span className={`pulse ${active ? "active" : ""}`} />
+            {session.data?.state ?? "loading"}
+          </span>
           <code>vitest {session.data?.vitestArgs.join(" ")}</code>
         </div>
         <div className="run-stats">
-          <span className="passed">
-            {session.data?.summary.passed ?? 0} passed
+          <span className="stat pass">
+            <b>{session.data?.summary.passed ?? 0}</b> passed
           </span>
-          <span className="failed">
-            {session.data?.summary.failed ?? 0} failed
+          <span className="stat fail">
+            <b>{session.data?.summary.failed ?? 0}</b> failed
           </span>
-          <span>{session.data?.summary.snapshotChanges ?? 0} changes</span>
+          <span className="stat changes">
+            <b>{session.data?.summary.snapshotChanges ?? 0}</b> changes
+          </span>
         </div>
         <button
           type="button"
@@ -316,10 +328,16 @@ export function ReviewPage() {
                     <span>
                       <strong>{node.label}</strong>
                       <small>
-                        {node.changeType} · {node.childCount} hunks
+                        {node.changeType} · {node.childCount} hunk
+                        {node.childCount === 1 ? "" : "s"}
                       </small>
                     </span>
-                    <ChevronDown size={14} />
+                    <span
+                      className={`tree-badge ${node.changeType ?? ""}`}
+                      aria-hidden="true"
+                    >
+                      {changeGlyph(node.changeType)}
+                    </span>
                   </button>
                 );
               })}
@@ -468,76 +486,133 @@ export function ReviewPage() {
           <div className="panel-title">
             <div>
               <span className="kicker">Review state</span>
-              <strong>Decision</strong>
+              <strong>Decisions</strong>
             </div>
-            <CircleDot size={18} />
+            <span className="count">{list.length}</span>
           </div>
-          <div className="decision-totals">
-            <div>
-              <strong>{totals.pending}</strong>
-              <span>Pending</span>
+          <div className="decision-body">
+            <div className="decision-progress">
+              <div className="decision-progress-bar">
+                <span
+                  className="seg-accepted"
+                  style={{ width: `${totalPercent(totals.accepted)}%` }}
+                />
+                <span
+                  className="seg-rejected"
+                  style={{ width: `${totalPercent(totals.rejected)}%` }}
+                />
+                <span
+                  className="seg-pending"
+                  style={{ width: `${totalPercent(totals.pending)}%` }}
+                />
+              </div>
+              <div className="decision-progress-caption">
+                <span>Review progress</span>
+                <span>
+                  <b>{totals.accepted + totals.rejected}</b> / {list.length}{" "}
+                  decided
+                </span>
+              </div>
             </div>
-            <div>
-              <strong>{totals.accepted}</strong>
-              <span>Accepted</span>
+            <div className="decision-totals">
+              <div>
+                <strong>{totals.pending}</strong>
+                <span>Pending</span>
+              </div>
+              <div>
+                <strong>{totals.accepted}</strong>
+                <span>Accepted</span>
+              </div>
+              <div>
+                <strong>{totals.rejected}</strong>
+                <span>Rejected</span>
+              </div>
             </div>
-            <div>
-              <strong>{totals.rejected}</strong>
-              <span>Rejected</span>
+            <div className="decision-actions">
+              <button
+                type="button"
+                disabled={visibleEntryIds.length === 0 || decide.isPending}
+                className="accept"
+                onClick={() =>
+                  decide.mutate({
+                    selectors: visibleEntryIds,
+                    decision: "accepted",
+                  })
+                }
+              >
+                <Check size={16} /> Accept test snapshots <kbd>A</kbd>
+              </button>
+              <button
+                type="button"
+                disabled={visibleEntryIds.length === 0 || decide.isPending}
+                className="reject"
+                onClick={() =>
+                  decide.mutate({
+                    selectors: visibleEntryIds,
+                    decision: "rejected",
+                  })
+                }
+              >
+                <X size={16} /> Reject test snapshots <kbd>R</kbd>
+              </button>
             </div>
-          </div>
-          <div className="decision-actions">
-            <button
-              type="button"
-              disabled={visibleEntryIds.length === 0 || decide.isPending}
-              className="accept"
-              onClick={() =>
-                decide.mutate({
-                  selectors: visibleEntryIds,
-                  decision: "accepted",
-                })
-              }
-            >
-              <Check size={16} /> Accept test snapshots <kbd>A</kbd>
-            </button>
-            <button
-              type="button"
-              disabled={visibleEntryIds.length === 0 || decide.isPending}
-              className="reject"
-              onClick={() =>
-                decide.mutate({
-                  selectors: visibleEntryIds,
-                  decision: "rejected",
-                })
-              }
-            >
-              <X size={16} /> Reject test snapshots <kbd>R</kbd>
-            </button>
-          </div>
-          <div className="notice">
-            <strong>Incremental apply</strong>
-            <p>
-              Only accepted hunks change repository files. Pending candidates
-              stay in this session after the revision advances.
-            </p>
-          </div>
-          <div className="live-card">
-            <span className="kicker">Live activity</span>
-            {Object.values(live.runningTests)
-              .slice(0, 3)
-              .map((name) => (
-                <div key={name}>
-                  <Play size={11} />
-                  {name}
-                </div>
+            <div className="notice">
+              <strong>
+                <Info size={13} /> Incremental apply
+              </strong>
+              <p>
+                Only accepted hunks change repository files. Pending candidates
+                stay in this session after the revision advances.
+              </p>
+            </div>
+            <div className="live-card">
+              <span className="kicker">
+                <Play size={12} /> Live activity
+              </span>
+              {Object.values(live.runningTests).length === 0 &&
+              live.console.length === 0 ? (
+                <span className="live-idle">Idle — no live output</span>
+              ) : null}
+              {Object.values(live.runningTests)
+                .slice(0, 3)
+                .map((name) => (
+                  <div className="live-test" key={name}>
+                    <Play size={11} />
+                    {name}
+                  </div>
+                ))}
+              {live.console.slice(-3).map((event) => (
+                <code key={event.sequence}>
+                  {String(event.payload.content).trim()}
+                </code>
               ))}
-            {live.console.slice(-3).map((event) => (
-              <code key={event.sequence}>
-                {String(event.payload.content).trim()}
-              </code>
-            ))}
+            </div>
+            <div className="shortcuts-card">
+              <span className="kicker">Keyboard</span>
+              <div className="shortcut-row">
+                <span>Navigate entries</span>
+                <span>
+                  <kbd>J</kbd>
+                  <kbd>K</kbd>
+                </span>
+              </div>
+              <div className="shortcut-row">
+                <span>Accept snapshots</span>
+                <kbd>A</kbd>
+              </div>
+              <div className="shortcut-row">
+                <span>Reject snapshots</span>
+                <kbd>R</kbd>
+              </div>
+            </div>
           </div>
           <div className="apply-block">
+            <div className="apply-summary">
+              <span>Ready to apply</span>
+              <span>
+                <b>{totals.accepted}</b> accepted
+              </span>
+            </div>
             <button
               type="button"
               disabled={active || apply.isPending}
