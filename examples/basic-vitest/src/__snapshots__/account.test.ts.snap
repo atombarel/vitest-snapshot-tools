@@ -1,0 +1,19 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`account card > renders reviewable state > permissions 1`] = `
+[
+  "read",
+  "review",
+]
+`;
+
+exports[`account card > renders reviewable state > profile 1`] = `
+{
+  "id": 42,
+  "name": "Ada Lovelace",
+  "plan": "starter",
+  "status": "invited",
+}
+`;
+
+exports[`obsolete example 1`] = `"This entry will be discovered as obsolete"`;

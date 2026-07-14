@@ -1,0 +1,227 @@
+{
+  "requestId": "req_20260115_42ac11",
+  "generatedAt": "2026-01-15T09:00:00.000Z",
+  "pagination": {
+    "page": 1,
+    "perPage": 10,
+    "total": 8,
+    "nextCursor": "cus_009"
+  },
+  "summary": {
+    "active": 7,
+    "trial": 1,
+    "suspended": 0,
+    "monthlyRecurringRevenue": 1092
+  },
+  "data": [
+    {
+      "id": "cus_001",
+      "name": "Ada Lovelace",
+      "email": "ada@example.test",
+      "status": "active",
+      "region": "eu-central",
+      "subscription": {
+        "plan": "pro",
+        "interval": "monthly",
+        "renewalAt": "2026-02-10T00:00:00.000Z",
+        "amount": 79
+      },
+      "usage": {
+        "apiCalls": 8200,
+        "storageMb": 512,
+        "seats": 3
+      },
+      "features": {
+        "auditLog": false,
+        "singleSignOn": false,
+        "snapshotReview": false
+      },
+      "tags": [
+        "legacy"
+      ]
+    },
+    {
+      "id": "cus_002",
+      "name": "Grace Hopper",
+      "email": "grace@example.test",
+      "status": "active",
+      "region": "us-east",
+      "subscription": {
+        "plan": "pro",
+        "interval": "monthly",
+        "renewalAt": "2026-02-11T00:00:00.000Z",
+        "amount": 79
+      },
+      "usage": {
+        "apiCalls": 10420,
+        "storageMb": 624,
+        "seats": 4
+      },
+      "features": {
+        "auditLog": false,
+        "singleSignOn": false,
+        "snapshotReview": false
+      },
+      "tags": [
+        "api"
+      ]
+    },
+    {
+      "id": "cus_003",
+      "name": "Katherine Johnson",
+      "email": "katherine@example.test",
+      "status": "active",
+      "region": "us-east",
+      "subscription": {
+        "plan": "team",
+        "interval": "annual",
+        "renewalAt": "2026-04-12T00:00:00.000Z",
+        "amount": 149
+      },
+      "usage": {
+        "apiCalls": 12780,
+        "storageMb": 730,
+        "seats": 8
+      },
+      "features": {
+        "auditLog": true,
+        "singleSignOn": false,
+        "snapshotReview": false
+      },
+      "tags": [
+        "analytics"
+      ]
+    },
+    {
+      "id": "cus_004",
+      "name": "Margaret Hamilton",
+      "email": "margaret@example.test",
+      "status": "active",
+      "region": "us-west",
+      "subscription": {
+        "plan": "team",
+        "interval": "monthly",
+        "renewalAt": "2026-02-13T00:00:00.000Z",
+        "amount": 149
+      },
+      "usage": {
+        "apiCalls": 15110,
+        "storageMb": 900,
+        "seats": 9
+      },
+      "features": {
+        "auditLog": true,
+        "singleSignOn": false,
+        "snapshotReview": false
+      },
+      "tags": [
+        "api"
+      ]
+    },
+    {
+      "id": "cus_005",
+      "name": "Evelyn Boyd Granville",
+      "email": "evelyn@example.test",
+      "status": "active",
+      "region": "us-central",
+      "subscription": {
+        "plan": "enterprise",
+        "interval": "annual",
+        "renewalAt": "2026-05-14T00:00:00.000Z",
+        "amount": 299
+      },
+      "usage": {
+        "apiCalls": 17480,
+        "storageMb": 1024,
+        "seats": 20
+      },
+      "features": {
+        "auditLog": true,
+        "singleSignOn": true,
+        "snapshotReview": false
+      },
+      "tags": [
+        "enterprise",
+        "legacy"
+      ]
+    },
+    {
+      "id": "cus_006",
+      "name": "Mary Jackson",
+      "email": "mary@example.test",
+      "status": "active",
+      "region": "us-east",
+      "subscription": {
+        "plan": "pro",
+        "interval": "monthly",
+        "renewalAt": "2026-02-15T00:00:00.000Z",
+        "amount": 79
+      },
+      "usage": {
+        "apiCalls": 19820,
+        "storageMb": 1180,
+        "seats": 4
+      },
+      "features": {
+        "auditLog": false,
+        "singleSignOn": false,
+        "snapshotReview": false
+      },
+      "tags": [
+        "api"
+      ]
+    },
+    {
+      "id": "cus_007",
+      "name": "Dorothy Vaughan",
+      "email": "dorothy@example.test",
+      "status": "active",
+      "region": "us-east",
+      "subscription": {
+        "plan": "team",
+        "interval": "monthly",
+        "renewalAt": "2026-02-16T00:00:00.000Z",
+        "amount": 149
+      },
+      "usage": {
+        "apiCalls": 22190,
+        "storageMb": 1320,
+        "seats": 10
+      },
+      "features": {
+        "auditLog": true,
+        "singleSignOn": false,
+        "snapshotReview": false
+      },
+      "tags": [
+        "migration"
+      ]
+    },
+    {
+      "id": "cus_008",
+      "name": "Annie Easley",
+      "email": "annie@example.test",
+      "status": "trial",
+      "region": "us-central",
+      "subscription": {
+        "plan": "pro",
+        "interval": "monthly",
+        "renewalAt": "2026-02-17T00:00:00.000Z",
+        "amount": 79
+      },
+      "usage": {
+        "apiCalls": 1800,
+        "storageMb": 256,
+        "seats": 2
+      },
+      "features": {
+        "auditLog": false,
+        "singleSignOn": false,
+        "snapshotReview": false
+      },
+      "tags": [
+        "trial"
+      ]
+    }
+  ]
+}

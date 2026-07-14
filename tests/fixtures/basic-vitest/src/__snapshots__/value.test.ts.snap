@@ -1,0 +1,15 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`captures a value > metadata 1`] = `
+{
+  "source": "legacy fixture",
+  "valid": false,
+}
+`;
+
+exports[`captures a value > record 1`] = `
+{
+  "answer": 41,
+  "state": "baseline",
+}
+`;

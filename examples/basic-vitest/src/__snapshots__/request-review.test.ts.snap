@@ -1,0 +1,134 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`demo API request review > lists active customers > HTTP response 1`] = `
+{
+  "body": {
+    "data": [],
+    "nextCursor": null,
+  },
+  "headers": {
+    "content-type": "application/json",
+  },
+  "status": 202,
+}
+`;
+
+exports[`demo API request review > lists active customers > request log 1`] = `
+{
+  "durationMs": 31,
+  "level": "debug",
+  "message": "Customer query started",
+  "method": "GET",
+  "path": "/v1/customers?limit=10",
+  "requestId": "req_customers_old",
+}
+`;
+
+exports[`demo API request review > creates an invoice > HTTP response 1`] = `
+{
+  "body": {
+    "id": "inv_700",
+    "state": "draft",
+    "total": 9900,
+  },
+  "status": 202,
+}
+`;
+
+exports[`demo API request review > creates an invoice > request log 1`] = `
+{
+  "durationMs": 89,
+  "level": "debug",
+  "message": "Invoice queued",
+  "method": "POST",
+  "path": "/v1/invoices",
+  "requestId": "req_invoice_old",
+}
+`;
+
+exports[`demo API request review > upgrades a subscription > HTTP response 1`] = `
+{
+  "body": {
+    "id": "sub_42",
+    "plan": "pro",
+    "seats": 10,
+  },
+  "status": 200,
+}
+`;
+
+exports[`demo API request review > upgrades a subscription > request log 1`] = `
+{
+  "durationMs": 140,
+  "level": "info",
+  "message": "Subscription update requested",
+  "method": "PUT",
+  "path": "/v1/subscriptions/sub_42",
+  "requestId": "req_subscription_old",
+}
+`;
+
+exports[`demo API request review > returns an audit-log page > HTTP response 1`] = `
+{
+  "body": {
+    "data": [],
+    "nextCursor": null,
+  },
+  "status": 200,
+}
+`;
+
+exports[`demo API request review > returns an audit-log page > request log 1`] = `
+{
+  "durationMs": 105,
+  "level": "debug",
+  "message": "Audit search completed",
+  "method": "GET",
+  "path": "/v1/audit-log",
+  "requestId": "req_audit_old",
+}
+`;
+
+exports[`demo API request review > rotates an API key > HTTP response 1`] = `
+{
+  "body": {
+    "id": "key_7",
+    "prefix": "vsnap_test_old",
+    "scopes": [
+      "snapshots:read",
+    ],
+  },
+  "status": 202,
+}
+`;
+
+exports[`demo API request review > rotates an API key > request log 1`] = `
+{
+  "durationMs": 170,
+  "level": "info",
+  "message": "Key rotation scheduled",
+  "method": "POST",
+  "path": "/v1/api-keys/key_7/rotate",
+  "requestId": "req_key_old",
+}
+`;
+
+exports[`demo API request review > rejects an invalid webhook > HTTP response 1`] = `
+{
+  "body": {
+    "title": "Unauthorized",
+  },
+  "status": 403,
+}
+`;
+
+exports[`demo API request review > rejects an invalid webhook > request log 1`] = `
+{
+  "durationMs": 9,
+  "level": "warn",
+  "message": "Webhook rejected",
+  "method": "POST",
+  "path": "/v1/webhooks/events",
+  "requestId": "req_webhook_old",
+}
+`;

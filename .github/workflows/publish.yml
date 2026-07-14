@@ -1,0 +1,60 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'atombarel/vitest-snapshot-tools'
+    runs-on: ubuntu-latest
+    environment: npm
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Require a commit from main
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Install an OIDC-capable npm CLI
+        run: npm install --global npm@^11.5.1
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm release:validate -- "$GITHUB_REF_NAME"
+      - run: pnpm check
+      - run: pnpm skill:validate
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - run: pnpm exec publint packages/vitest-snapshot-tools
+
+      - name: Pack and validate package types
+        run: mkdir -p artifacts && pnpm --filter vitest-snapshot-tools pack --pack-destination artifacts
+
+      - run: pnpm exec attw artifacts/vitest-snapshot-tools-*.tgz --profile esm-only
+
+      - name: Publish with npm trusted publishing
+        working-directory: packages/vitest-snapshot-tools
+        run: npm publish --access public
