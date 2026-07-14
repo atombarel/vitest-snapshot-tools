@@ -19,12 +19,19 @@ try {
 
   await mkdir(outputDirectory, { recursive: true });
   browser = await chromium.launch();
-  const page = await browser.newPage({
-    colorScheme: "light",
-    deviceScaleFactor: 1,
-    viewport: { width: 1600, height: 1000 },
-  });
+  const createPage = async () => {
+    const page = await browser.newPage({
+      colorScheme: "dark",
+      deviceScaleFactor: 2,
+      viewport: { width: 1600, height: 1000 },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem("vsnap-theme", "dark");
+    });
+    return page;
+  };
 
+  let page = await createPage();
   await page.goto(reviewUrl.toString());
   await page
     .getByRole("button", {
@@ -38,6 +45,9 @@ try {
     path: resolve(outputDirectory, "review-workspace.png"),
   });
 
+  await page.close();
+  page = await createPage();
+  await page.goto(reviewUrl.toString());
   await page
     .getByRole("button", {
       name: /demo API request review > lists active customers > request log 1/i,
