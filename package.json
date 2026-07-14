@@ -14,6 +14,7 @@
     "typecheck": "turbo typecheck",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "test:e2e": "playwright test",
+    "docs:screenshots": "pnpm build && node scripts/capture-readme-screenshots.mjs",
     "skill:validate": "node scripts/validate-skill.mjs",
     "format": "biome format --write .",
     "changeset": "changeset",
