@@ -5,45 +5,94 @@
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Vitest 4](https://img.shields.io/badge/Vitest-4.x-6E9F18.svg)](https://vitest.dev/)
 
-Turn thousands of Vitest snapshot failures into a compact set of exact change
-families. Review a repeated change once—in the UI or through an agent-friendly
-CLI—then safely apply that decision everywhere it occurs.
+A transactional review workflow for Vitest 4 snapshots. When a change breaks
+hundreds of snapshots, `vitest-snapshot-tools` groups the identical failures
+into a handful of **exact change families**, lets you review each distinct
+change once—in the browser or through an agent-friendly CLI—and then applies
+that decision everywhere it occurs.
 
-`vitest-snapshot-tools` runs your project's own Vitest installation and captures
-snapshot candidates in the OS cache. Snapshot files in the repository are not
-changed during the run. Accepted changes reach them only when you run
-`vsnap apply` or choose **Preview & apply accepted** in the UI.
+Nothing in your repository changes while you review. `vsnap` runs your project's
+own Vitest, captures every snapshot candidate in the OS cache, and writes
+approved changes back only when you run `vsnap apply` or choose **Preview &
+apply accepted** in the UI.
 
-![The vitest-snapshot-tools review workspace showing test source, two snapshot diffs, and explicit review controls](docs/images/review-workspace.png)
+![The vitest-snapshot-tools review workspace on a 100-test suite: one exact change family standing in for 40 identical snapshot failures, with a compacted-review summary, the representative test source, the baseline-to-candidate snapshot diff, and controls to accept all 40 occurrences at once](docs/images/change-families.png)
 
-## Built for coding agents: review once, spend tokens once
+## Highlights
 
-Snapshot updates are unusually expensive for coding agents: a one-line API
-change can fail hundreds of tests, and sending every nearly identical diff to a
-model wastes context, tool calls, and tokens. `vitest-snapshot-tools` fingerprints
-the exact added and removed lines in every hunk and groups identical fingerprints
-into **change families**.
+- **Review once, apply everywhere.** Identical diffs collapse into exact change
+  families, so a 100-failure run can become 14 decisions and a 5,200-snapshot
+  suite collapses to the distinct changes it actually contains.
+- **Nothing is written during capture.** A custom snapshot environment redirects
+  Vitest's baseline and candidate output to a private cache. Repository files
+  change only on an explicit `apply`.
+- **Built for coding agents.** A headless, `--json` CLI and a bundled skill let
+  an agent review one representative diff per family instead of re-reading every
+  near-identical snapshot.
+- **No Git required.** No Git command runs during capture, review, apply, or
+  verify, so it behaves the same in a clean tree, a dirty tree, or no repo at all.
+- **Safe by construction.** Hash-checked writes, path containment, symlink
+  refusal, and a rollback journal protect the apply step.
 
-An agent can inspect one representative diff, see how many occurrences, tests,
-and files it affects, and accept or reject the entire exact family with one
-selector. A suite with 100 failures may therefore become 14 review items; a
-5,200-snapshot suite can be reduced to the distinct changes it actually contains.
-Singletons and genuine outliers remain separate, so compaction does not hide
-unique changes or rely on a model guessing that two diffs are equivalent.
+## Quick start
 
-For the included realistic 100-test example, the agent-facing workload changes
-like this:
+Run the published package from the root of any Vitest project:
 
-| Work sent to the agent | Entry-by-entry review | Family-first review |
+```sh
+npx vitest-snapshot-tools
+```
+
+`npx` uses the project-local package when it is installed and downloads it for a
+one-off run otherwise. Everything after `--` is passed straight to Vitest; with
+no arguments, the default Vitest configuration is reviewed:
+
+```sh
+npx vitest-snapshot-tools -- src/account.test.ts --project unit
+```
+
+The CLI opens the local review UI (and prints the URL if a browser cannot be
+opened for it). The server listens locally and requires a per-process bearer
+token.
+
+To pin the version for a team, add it as a dev dependency:
+
+```sh
+npm install --save-dev vitest-snapshot-tools
+```
+
+### Requirements
+
+- Node.js 22.14 or newer (tested on Node.js 22, 24, and 26)
+- A project-local Vitest in the `>=4 <5` range
+- macOS or Linux (the platforms currently covered by CI)
+
+## Review once, apply everywhere
+
+Snapshot updates are unusually expensive—especially for coding agents. A
+one-line API change can fail hundreds of tests, and sending every nearly
+identical diff to a model wastes context, tool calls, and tokens.
+
+`vitest-snapshot-tools` fingerprints the exact added and removed lines in every
+hunk and groups identical fingerprints into **change families**. You inspect one
+representative diff, see how many occurrences, tests, and files it affects, and
+accept or reject the entire exact family with a single decision. Singletons and
+genuine outliers stay separate, so compaction never hides a unique change or
+relies on a model guessing that two diffs are equivalent.
+
+For the bundled 100-test scale example, the review workload shrinks like this:
+
+| Work to review | Entry-by-entry | Family-first |
 | --- | ---: | ---: |
 | Review items | 100 | 14 |
 | Representative diffs needed | Up to 100 | Up to 14 |
 | Decisions for full coverage | Up to 100 | 14 |
 
-The exact token savings depend on diff size and the number of repeated changes,
-but repeated snapshot text no longer needs to be returned to the model for every
-test. The ten unique changes in this example still account for ten of the 14
-items; only genuinely identical work is collapsed.
+The exact token savings depend on diff size and how many changes repeat, but
+repeated snapshot text no longer needs to be returned to the model for every
+test. The ten unique changes in that example still account for ten of the 14
+items—only genuinely identical work collapses.
+
+## Built for coding agents
 
 Install the bundled Codex-compatible skill:
 
@@ -51,7 +100,7 @@ Install the bundled Codex-compatible skill:
 npx vitest-snapshot-tools skill install
 ```
 
-Then ask your agent to use `$review-vitest-snapshots`, or run the same
+Then ask your agent to use `$review-vitest-snapshots`, or drive the same
 token-efficient workflow directly:
 
 ```sh
@@ -72,15 +121,14 @@ npx vitest-snapshot-tools verify
 The skill preserves the transactional safety model: it never edits snapshots or
 cache files directly, never skips preview, and refreshes selectors after a
 revision conflict. See
-[`review-vitest-snapshots`](skills/review-vitest-snapshots/SKILL.md) for the full
-agent workflow and JSON response contract.
+[`review-vitest-snapshots`](skills/review-vitest-snapshots/SKILL.md) for the
+full agent workflow and JSON response contract.
 
-## Why use it?
+## How it works
 
-Running `vitest -u` writes every updated snapshot immediately. That is convenient
-for small changes, but harder to trust when a run updates many snapshots or when
-an automated agent is doing the review.
-
+Running `vitest -u` writes every updated snapshot immediately. That is
+convenient for small changes, but harder to trust when a run updates many
+snapshots or when an automated agent is doing the review.
 `vitest-snapshot-tools` separates snapshot generation from repository writes:
 
 1. **Capture** — run Vitest with an overlay snapshot environment and store the
@@ -88,51 +136,28 @@ an automated agent is doing the review.
 2. **Review** — compact identical added and removed lines into exact change
    families, or inspect the imports, owning suite, linked hooks, focused test,
    snapshot matcher, and full diff.
-3. **Decide** — accept or reject a family, file, test, entry, or individual
-   diff hunk.
+3. **Decide** — accept or reject a family, file, test, entry, or individual diff
+   hunk.
 4. **Preview** — inspect the exact patch assembled from accepted hunks.
 5. **Apply** — hash-check the baseline and atomically write only accepted
    changes.
 6. **Verify** — run Vitest again and confirm no unexpected snapshot changes
    remain.
 
-The tool never invokes Git, so it works the same in a clean tree, a dirty tree,
-or outside a Git repository.
+![A per-test review showing the focused test block, its linked afterEach hook, both snapshot matchers, and the generated request-log and HTTP-response diffs](docs/images/test-context.png)
 
-## Requirements
+Group changes by **family** to review each distinct change once, or by **test**
+to walk a single test's source, linked hooks, and every snapshot it produces.
 
-- Node.js 22.14 or newer (tested on Node.js 22, 24, and 26)
-- A project-local Vitest version in the `>=4 <5` range
-- macOS or Linux (the platforms currently covered by CI)
+## Try the demos from source
 
-## Quick start
+The repository ships two intentionally out-of-date Vitest projects.
 
-Run the published package from the root of any Vitest project:
+### Basic demo
 
-```sh
-npx vitest-snapshot-tools
-```
-
-`npx` uses the project-local package when it is installed and downloads it for
-a one-off run otherwise. To pin the version for a project or team, add it as a
-development dependency:
-
-```sh
-npm install --save-dev vitest-snapshot-tools
-npx vitest-snapshot-tools -- --project unit
-```
-
-Everything after `--` is passed directly to Vitest. With no Vitest arguments,
-`npx vitest-snapshot-tools` reviews the project's default Vitest configuration.
-
-The CLI prints the local review URL if a browser cannot be opened automatically.
-The server listens locally and requires a per-process bearer token.
-
-## Try the demo from source
-
-The repository includes an intentionally out-of-date Vitest project. It covers
-normal `.snap` files, Markdown and JSON file snapshots, a deleted snapshot,
-multi-hunk diffs, and tests that create multiple snapshots from one source block.
+`examples/basic-vitest` covers the full surface area: normal `.snap` files,
+Markdown and JSON file snapshots, a deleted snapshot, multi-hunk diffs, and
+tests that create multiple snapshots from one source block.
 
 ```sh
 git clone https://github.com/atombarel/vitest-snapshot-tools.git
@@ -145,24 +170,16 @@ pnpm --filter @vitest-snapshot-tools/example-basic review
 
 Select a change in the left panel, compare the test source and snapshot output,
 then accept or reject that test's snapshots. Applying is optional; capture and
-review do not modify the example snapshots.
+review do not modify the example snapshots. If you apply changes while
+exploring, restore the fixtures with `git restore examples/basic-vitest`.
 
-![A grouped review showing linked hooks, the exact test block, both snapshot matchers, and the generated request diff](docs/images/test-context.png)
+### Change families at scale
 
-If you apply changes while exploring the demo, restore its fixtures with:
-
-```sh
-git restore examples/basic-vitest
-```
-
-### Try change families at scale
-
-The generated scale example contains a small deterministic HTTP application
+`examples/family-scale-vitest` generates a small deterministic HTTP application
 with routing, request-scoped structured logging, response envelopes, and 100
-integration-style tests. Each test sends a realistic request and snapshots the
-request summary, API response, and emitted logs. It produces recurring exact
-change families with 40, 25, 15, and 10 occurrences, followed by ten deliberate
-outliers that must remain separate review items.
+integration-style tests. Each test snapshots a request summary, an API response,
+and emitted logs, producing recurring exact families of 40, 25, 15, and 10
+occurrences followed by ten deliberate outliers that must remain separate.
 
 ```sh
 pnpm build
@@ -170,9 +187,8 @@ pnpm --filter @vitest-snapshot-tools/example-family-scale review
 ```
 
 The generator resets its ignored source and snapshot fixtures before every run,
-so the example can be repeated without restoring repository files.
-
-For a headless assertion of the expected family distribution:
+so it can be repeated without restoring repository files. For a headless
+assertion of the expected family distribution:
 
 ```sh
 pnpm --filter @vitest-snapshot-tools/example-family-scale verify
@@ -278,7 +294,7 @@ The current version intentionally supports a narrow, predictable workflow:
 
 Bug reports, small fixes, and focused pull requests are welcome. Please use
 [GitHub Issues](https://github.com/atombarel/vitest-snapshot-tools/issues) for
-reproducible bugs and open an issue before starting a substantial behavior or
+reproducible bugs, and open an issue before starting a substantial behavior or
 protocol change.
 
 ### Development setup
@@ -291,7 +307,7 @@ pnpm test:e2e
 ```
 
 The monorepo separates the protocol, diff engine, session store, Vitest runner,
-application service, local server, CLI, React UI, published package, example,
+application service, local server, CLI, React UI, published package, examples,
 and agent skill. Turbo coordinates builds and tests; Biome handles linting and
 formatting.
 
@@ -310,9 +326,9 @@ Before opening a pull request, run `pnpm check`, `pnpm test:e2e`, and
 pnpm changeset
 ```
 
-Package releases are published from version tags through npm trusted
-publishing. See [RELEASING.md](RELEASING.md) for the one-time npm setup and
-release procedure.
+Package releases are published from version tags through npm trusted publishing.
+See [RELEASING.md](RELEASING.md) for the one-time npm setup and release
+procedure.
 
 ## License
 

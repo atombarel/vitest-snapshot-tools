@@ -8,7 +8,7 @@ redirects snapshot candidates outside the repository, and writes only explicitly
 accepted changes. Review in a local authenticated UI or use the versioned JSON
 CLI for automation.
 
-![The vitest-snapshot-tools review workspace](https://raw.githubusercontent.com/atombarel/vitest-snapshot-tools/main/docs/images/review-workspace.png)
+![The vitest-snapshot-tools review workspace: one exact change family standing in for 40 identical snapshot failures, ready to accept everywhere with a single decision](https://raw.githubusercontent.com/atombarel/vitest-snapshot-tools/main/docs/images/change-families.png)
 
 ## Quick start
 
