@@ -35,7 +35,7 @@ try {
   await page.goto(reviewUrl.toString());
   await page
     .getByRole("button", {
-      name: /account card > renders reviewable state > profile 1/i,
+      name: /account card > renders reviewable state/i,
     })
     .click();
   await page.getByText("src/account.test.ts", { exact: true }).waitFor();
@@ -50,7 +50,7 @@ try {
   await page.goto(reviewUrl.toString());
   await page
     .getByRole("button", {
-      name: /demo API request review > lists active customers > request log 1/i,
+      name: /demo API request review > lists active customers/i,
     })
     .click();
   await page.getByText("2 linked hooks · read only").waitFor();
