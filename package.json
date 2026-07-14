@@ -5,7 +5,7 @@
   "type": "module",
   "packageManager": "pnpm@10.15.1",
   "engines": {
-    "node": ">=20.19"
+    "node": ">=22.14.0"
   },
   "scripts": {
     "build": "turbo build",
@@ -15,6 +15,7 @@
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "test:e2e": "playwright test",
     "docs:screenshots": "pnpm build && node scripts/capture-readme-screenshots.mjs",
+    "release:validate": "node scripts/validate-release-tag.mjs",
     "skill:validate": "node scripts/validate-skill.mjs",
     "format": "biome format --write .",
     "changeset": "changeset",

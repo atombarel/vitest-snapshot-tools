@@ -16,7 +16,7 @@ pnpm add -D vitest-snapshot-tools
 pnpm exec vsnap -- --project unit
 ```
 
-Requires Node.js 20.19 or newer and a project-local Vitest version in the
+Requires Node.js 22.14 or newer and a project-local Vitest version in the
 `>=4 <5` range. Everything after `--` is passed to Vitest.
 
 ## Headless workflow

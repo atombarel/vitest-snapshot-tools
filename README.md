@@ -38,7 +38,7 @@ or outside a Git repository.
 
 ## Requirements
 
-- Node.js 20.19 or newer
+- Node.js 22.14 or newer (tested on Node.js 22, 24, and 26)
 - A project-local Vitest version in the `>=4 <5` range
 - macOS or Linux (the platforms currently covered by CI)
 
@@ -231,6 +231,10 @@ Before opening a pull request, run `pnpm check`, `pnpm test:e2e`, and
 ```sh
 pnpm changeset
 ```
+
+Package releases are published from version tags through npm trusted
+publishing. See [RELEASING.md](RELEASING.md) for the one-time npm setup and
+release procedure.
 
 ## License
 
