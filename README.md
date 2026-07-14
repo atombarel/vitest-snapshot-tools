@@ -97,7 +97,10 @@ git restore examples/basic-vitest
 
 ### Try change families at scale
 
-The generated scale example contains 100 tests. It produces recurring exact
+The generated scale example contains a small deterministic HTTP application
+with routing, request-scoped structured logging, response envelopes, and 100
+integration-style tests. Each test sends a realistic request and snapshots the
+request summary, API response, and emitted logs. It produces recurring exact
 change families with 40, 25, 15, and 10 occurrences, followed by ten deliberate
 outliers that must remain separate review items.
 
