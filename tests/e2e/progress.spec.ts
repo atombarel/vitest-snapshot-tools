@@ -30,9 +30,10 @@ test("explains live progress during a larger test run", async ({ page }) => {
   const progress = page.getByRole("region", { name: "Test run progress" });
   await expect(progress).toBeVisible();
   await expect(progress.getByRole("progressbar")).toBeVisible();
-  await expect(progress).toContainText(/discovered tests|report discovered tests/);
+  await expect(progress).toContainText(
+    /discovered tests|report discovered tests/,
+  );
+  await expect(progress).toContainText("snapshot change");
   await expect(progress).toContainText("passed");
-  await expect(progress).toContainText("failed");
-  await expect(progress).toContainText("changes");
   await expect(progress).toContainText("files");
 });

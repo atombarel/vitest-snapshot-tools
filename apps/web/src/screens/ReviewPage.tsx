@@ -308,7 +308,7 @@ export function ReviewPage() {
 
   return (
     <TooltipProvider>
-      <div className="flex h-screen flex-col overflow-hidden">
+      <div className="review-shell flex h-screen flex-col overflow-hidden">
         {/* Top app bar */}
         <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
           <div className="flex items-center gap-2.5">
@@ -431,9 +431,9 @@ export function ReviewPage() {
         ) : null}
 
         {/* Workspace */}
-        <div className="flex min-h-0 flex-1">
+        <div className="workspace flex min-h-0 flex-1 overflow-hidden">
           {/* Left: change index */}
-          <aside className="flex w-80 shrink-0 flex-col border-r">
+          <aside className="tree-panel flex w-80 shrink-0 flex-col border-r">
             <div className="flex flex-col gap-3 border-b p-3">
               <div className="flex items-center justify-between px-1">
                 <span className="text-sm font-medium">
@@ -542,7 +542,7 @@ export function ReviewPage() {
           </aside>
 
           {/* Right: diff + action bar */}
-          <main className="flex min-w-0 flex-1 flex-col">
+          <main className="diff-panel flex min-w-0 flex-1 flex-col overflow-hidden">
             {/* Title row */}
             <div className="flex h-12 shrink-0 items-center gap-3 border-b px-4">
               <div className="min-w-0 flex-1">
@@ -671,181 +671,177 @@ export function ReviewPage() {
             </div>
 
             {/* Scrollable review content */}
-            <div className="min-h-0 flex-1 overflow-auto bg-muted/20 p-4 [&_.diff-scroll]:contents">
-              <div className="diff-scroll">
-                {review.data ? (
-                  <div className="mx-auto flex max-w-4xl flex-col gap-4">
-                    {activeNode?.kind === "family" ? (
-                      <section className="family-summary flex items-center justify-between gap-4 rounded-lg border bg-card p-4">
-                        <div className="min-w-0">
-                          <div className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                            Compacted review
-                          </div>
-                          <div className="truncate text-sm font-semibold">
-                            {activeNode.label}
-                          </div>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Every occurrence has this complete set of exact
-                            changes; unchanged context may differ.
-                          </p>
+            <div className="diff-scroll min-h-0 flex-1 overflow-auto bg-muted/20 p-4">
+              {review.data ? (
+                <div className="mx-auto flex max-w-4xl flex-col gap-4">
+                  {activeNode?.kind === "family" ? (
+                    <section className="family-summary flex items-center justify-between gap-4 rounded-lg border bg-card p-4">
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                          Compacted review
                         </div>
-                        <div className="flex shrink-0 gap-5 text-center">
-                          <div>
-                            <div className="text-lg font-semibold tabular-nums">
-                              {activeNode.childCount}
-                            </div>
-                            <div className="text-[10px] text-muted-foreground uppercase">
-                              occurrences
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-lg font-semibold tabular-nums">
-                              {activeNode.testCount ?? 0}
-                            </div>
-                            <div className="text-[10px] text-muted-foreground uppercase">
-                              tests
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-lg font-semibold tabular-nums">
-                              {activeNode.fileCount ?? 0}
-                            </div>
-                            <div className="text-[10px] text-muted-foreground uppercase">
-                              files
-                            </div>
-                          </div>
+                        <div className="truncate text-sm font-semibold">
+                          {activeNode.label}
                         </div>
-                      </section>
-                    ) : null}
-
-                    <section className="overflow-hidden rounded-lg border bg-card">
-                      <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5">
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium">
-                            {activeNode?.kind === "family"
-                              ? "Representative test source"
-                              : "Test source"}
-                          </div>
-                          <div className="truncate font-mono text-xs text-muted-foreground">
-                            {review.data.source.relativePath}
-                          </div>
-                        </div>
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {[
-                            linkedContextCount
-                              ? `${linkedContextCount} context block${linkedContextCount === 1 ? "" : "s"}`
-                              : null,
-                            linkedHookCount
-                              ? `${linkedHookCount} linked hook${linkedHookCount === 1 ? "" : "s"}`
-                              : null,
-                            "read only",
-                          ]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </span>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Every occurrence has this complete set of exact
+                          changes; unchanged context may differ.
+                        </p>
                       </div>
-                      <Suspense
-                        fallback={
-                          <div className="flex min-h-32 items-center justify-center gap-2 text-sm text-muted-foreground">
-                            <Code2 className="size-5" /> Coloring test source…
+                      <div className="flex shrink-0 gap-5 text-center">
+                        <div>
+                          <div className="text-lg font-semibold tabular-nums">
+                            {activeNode.childCount}
                           </div>
-                        }
-                      >
-                        <SourceCodeView
-                          source={review.data.source}
-                          theme={resolvedTheme}
-                        />
-                      </Suspense>
+                          <div className="text-[10px] text-muted-foreground uppercase">
+                            occurrences
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-lg font-semibold tabular-nums">
+                            {activeNode.testCount ?? 0}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground uppercase">
+                            tests
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-lg font-semibold tabular-nums">
+                            {activeNode.fileCount ?? 0}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground uppercase">
+                            files
+                          </div>
+                        </div>
+                      </div>
                     </section>
+                  ) : null}
 
-                    <section
-                      className="flex flex-col gap-3"
-                      aria-label="Snapshot chunks generated by this test"
-                    >
-                      <div className="flex items-center justify-between gap-3 px-1">
+                  <section className="overflow-hidden rounded-lg border bg-card">
+                    <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5">
+                      <div className="min-w-0">
                         <div className="text-sm font-medium">
                           {activeNode?.kind === "family"
-                            ? "Representative snapshot change"
-                            : "Snapshot changes"}
+                            ? "Representative test source"
+                            : "Test source"}
                         </div>
-                        <span className="text-xs text-muted-foreground">
-                          {renderedEntries.length} chunk
-                          {renderedEntries.length === 1 ? "" : "s"}
-                        </span>
+                        <div className="truncate font-mono text-xs text-muted-foreground">
+                          {review.data.source.relativePath}
+                        </div>
                       </div>
-                      {renderedEntries.map((item, index) => (
-                        <article
-                          className="snapshot-chunk overflow-hidden rounded-lg border bg-card"
-                          key={item.entry.entryId}
-                        >
-                          <header className="flex items-center justify-between gap-3 border-b bg-muted/40 px-4 py-2.5">
-                            <div className="flex min-w-0 flex-col gap-0.5">
-                              <span className="truncate text-sm font-medium">
-                                {item.entry.context.snapshotName ??
-                                  `Snapshot ${index + 1}`}
-                              </span>
-                              <code className="truncate font-mono text-xs text-muted-foreground">
-                                {matcherInvocation(item.entry.context)}
-                              </code>
-                            </div>
-                            <div className="flex shrink-0 items-center gap-2">
-                              {item.language === "json" ? (
-                                <Badge variant="outline">JSON</Badge>
-                              ) : null}
-                              <span
-                                className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase ${changeTone(item.entry.context.changeType)}`}
-                              >
-                                {item.entry.context.changeType}
-                              </span>
-                            </div>
-                          </header>
-                          <FileDiff
-                            fileDiff={item.fileDiff}
-                            options={{
-                              diffStyle: layout,
-                              theme: {
-                                dark: "one-dark-pro",
-                                light: "github-light",
-                              },
-                              lineDiffType:
-                                Math.max(
-                                  item.entry.baseline.length,
-                                  item.entry.candidate.length,
-                                ) > 500_000
-                                  ? "none"
-                                  : "word-alt",
-                              hunkSeparators: "line-info",
-                            }}
-                          />
-                        </article>
-                      ))}
-                    </section>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {[
+                          linkedContextCount
+                            ? `${linkedContextCount} context block${linkedContextCount === 1 ? "" : "s"}`
+                            : null,
+                          linkedHookCount
+                            ? `${linkedHookCount} linked hook${linkedHookCount === 1 ? "" : "s"}`
+                            : null,
+                          "read only",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    </div>
+                    <Suspense
+                      fallback={
+                        <div className="flex min-h-32 items-center justify-center gap-2 text-sm text-muted-foreground">
+                          <Code2 className="size-5" /> Coloring test source…
+                        </div>
+                      }
+                    >
+                      <SourceCodeView
+                        source={review.data.source}
+                        theme={resolvedTheme}
+                      />
+                    </Suspense>
+                  </section>
+
+                  <section
+                    className="flex flex-col gap-3"
+                    aria-label="Snapshot chunks generated by this test"
+                  >
+                    <div className="flex items-center justify-between gap-3 px-1">
+                      <div className="text-sm font-medium">
+                        {activeNode?.kind === "family"
+                          ? "Representative snapshot change"
+                          : "Snapshot changes"}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {renderedEntries.length} chunk
+                        {renderedEntries.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    {renderedEntries.map((item, index) => (
+                      <article
+                        className="snapshot-chunk overflow-hidden rounded-lg border bg-card"
+                        key={item.entry.entryId}
+                      >
+                        <header className="flex items-center justify-between gap-3 border-b bg-muted/40 px-4 py-2.5">
+                          <div className="flex min-w-0 flex-col gap-0.5">
+                            <span className="truncate text-sm font-medium">
+                              {item.entry.context.snapshotName ??
+                                `Snapshot ${index + 1}`}
+                            </span>
+                            <code className="truncate font-mono text-xs text-muted-foreground">
+                              {matcherInvocation(item.entry.context)}
+                            </code>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            {item.language === "json" ? (
+                              <Badge variant="outline">JSON</Badge>
+                            ) : null}
+                            <span
+                              className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase ${changeTone(item.entry.context.changeType)}`}
+                            >
+                              {item.entry.context.changeType}
+                            </span>
+                          </div>
+                        </header>
+                        <FileDiff
+                          fileDiff={item.fileDiff}
+                          options={{
+                            diffStyle: layout,
+                            theme: {
+                              dark: "one-dark-pro",
+                              light: "github-light",
+                            },
+                            lineDiffType:
+                              Math.max(
+                                item.entry.baseline.length,
+                                item.entry.candidate.length,
+                              ) > 500_000
+                                ? "none"
+                                : "word-alt",
+                            hunkSeparators: "line-info",
+                          }}
+                        />
+                      </article>
+                    ))}
+                  </section>
+                </div>
+              ) : review.isError ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+                  <FileCode2 className="size-9 text-muted-foreground" />
+                  <div className="text-sm font-semibold">
+                    Test review unavailable
                   </div>
-                ) : review.isError ? (
-                  <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-                    <FileCode2 className="size-9 text-muted-foreground" />
-                    <div className="text-sm font-semibold">
-                      Test review unavailable
-                    </div>
-                    <div className="max-w-80 text-xs text-muted-foreground">
-                      {review.error.message}
-                    </div>
+                  <div className="max-w-80 text-xs text-muted-foreground">
+                    {review.error.message}
                   </div>
-                ) : (
-                  <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-                    <FileCode2 className="size-9 text-muted-foreground" />
-                    <div className="text-sm font-semibold">
-                      {selected
-                        ? "Loading test review…"
-                        : "No snapshot selected"}
-                    </div>
-                    <div className="max-w-80 text-xs text-muted-foreground">
-                      Select a change to see its exact test source and snapshot
-                      diff.
-                    </div>
+                </div>
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+                  <FileCode2 className="size-9 text-muted-foreground" />
+                  <div className="text-sm font-semibold">
+                    {selected ? "Loading test review…" : "No snapshot selected"}
                   </div>
-                )}
-              </div>
+                  <div className="max-w-80 text-xs text-muted-foreground">
+                    Select a change to see its exact test source and snapshot
+                    diff.
+                  </div>
+                </div>
+              )}
             </div>
           </main>
         </div>
