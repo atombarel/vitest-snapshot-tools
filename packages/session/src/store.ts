@@ -45,6 +45,8 @@ export interface ReviewIndex {
     newStart: number;
     newLines: number;
     contentHash: string;
+    changeHash?: string;
+    summary?: string;
   }>;
 }
 export interface SessionStoreOptions {

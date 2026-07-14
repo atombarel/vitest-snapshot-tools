@@ -6,6 +6,7 @@ import {
   indexSnapshot,
   parseSnapshotFile,
   serializeSnapshotEntry,
+  summarizeHunk,
   synthesizeSnapshotFile,
 } from "./index.js";
 
@@ -39,6 +40,18 @@ describe("safe snapshot parsing", () => {
 });
 
 describe("diff and synthesis", () => {
+  it("summarizes exact changed lines without diff context", () => {
+    expect(
+      summarizeHunk([
+        "  {",
+        '-   "status": "pending",',
+        '+   "status": "active",',
+        "  }",
+      ]),
+    ).toBe('"status": "pending", → "status": "active",');
+    expect(summarizeHunk(["+ added"])).toBe("Added added");
+  });
+
   it("uses stable hunks and applies accepted hunks only", () => {
     const first = createEntryDiff(
       "entry_123",
@@ -58,6 +71,20 @@ describe("diff and synthesis", () => {
         hunks: first.hunks.map((hunk) => ({ ...hunk, decision: "accepted" })),
       }),
     ).toBe("one\nTWO\nthree\n");
+  });
+  it("groups identical changed lines even when unchanged context differs", () => {
+    const first = createEntryDiff(
+      "entry_first",
+      '{\n  "id": 1,\n  "name": "Ada"\n}\n',
+      '{\n  "id": 1,\n  "apiVersion": 2,\n  "name": "Ada"\n}\n',
+    );
+    const second = createEntryDiff(
+      "entry_second",
+      '{\n  "id": 99,\n  "name": "Grace"\n}\n',
+      '{\n  "id": 99,\n  "apiVersion": 2,\n  "name": "Grace"\n}\n',
+    );
+    expect(first.hunks[0]?.contentHash).not.toBe(second.hunks[0]?.contentHash);
+    expect(first.hunks[0]?.changeHash).toBe(second.hunks[0]?.changeHash);
   });
   it("derives mixed and pending parent states", () => {
     expect(

@@ -124,6 +124,15 @@ importers:
         specifier: workspace:*
         version: link:../../packages/vitest-snapshot-tools
 
+  examples/family-scale-vitest:
+    devDependencies:
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@24.13.3)(jsdom@26.1.0)(vite@8.1.4(@types/node@24.13.3)(jiti@2.7.0))
+      vitest-snapshot-tools:
+        specifier: workspace:*
+        version: link:../../packages/vitest-snapshot-tools
+
   packages/application:
     dependencies:
       '@vsnap/core':

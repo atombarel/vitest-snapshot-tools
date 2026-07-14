@@ -1,0 +1,28 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`shared API contract > returns a customer 1`] = `
+{
+  "id": "cus_001",
+  "result": {
+    "name": "Ada Lovelace",
+  },
+}
+`;
+
+exports[`shared API contract > returns an invoice 1`] = `
+{
+  "id": "inv_804",
+  "result": {
+    "total": 12900,
+  },
+}
+`;
+
+exports[`shared API contract > returns a subscription 1`] = `
+{
+  "id": "sub_42",
+  "result": {
+    "plan": "enterprise",
+  },
+}
+`;

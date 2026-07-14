@@ -27,6 +27,13 @@ test("shows one exact test block above both of its snapshot chunks", async ({
   reviewUrl.hash = new URL(server.url).hash;
   await page.goto(reviewUrl.toString());
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(
+    page.getByText("Change families", { exact: true }),
+  ).toBeVisible();
+  await page.locator(".tree-row").first().click();
+  await expect(page.getByText("EXACT CHANGE FAMILY")).toBeVisible();
+  await expect(page.locator(".family-summary")).toContainText("occurrences");
+  await page.getByRole("button", { name: "Tests", exact: true }).click();
   await page
     .getByRole("button", {
       name: /demo API request review > lists active customers/i,
@@ -35,7 +42,15 @@ test("shows one exact test block above both of its snapshot chunks", async ({
   await expect(
     page.getByText("src/request-review.test.ts", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("2 linked hooks · read only")).toBeVisible();
+  await expect(
+    page.getByText("2 context blocks · 2 linked hooks · read only"),
+  ).toBeVisible();
+  await expect(page.locator(".source-block.imports")).toContainText(
+    'from "vitest"',
+  );
+  await expect(page.locator(".source-block.suite")).toContainText(
+    'describe("demo API request review"',
+  );
   await expect(page.locator(".source-block.beforeEach")).toContainText(
     "completedRequestIds = []",
   );

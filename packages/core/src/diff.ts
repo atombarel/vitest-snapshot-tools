@@ -10,6 +10,44 @@ export interface TextEntryDiff
   hunks: TextHunk[];
 }
 
+function compactPreview(value: string, limit = 72): string {
+  const compact = value.trim().replace(/\s+/g, " ");
+  return compact.length <= limit ? compact : `${compact.slice(0, limit - 1)}…`;
+}
+
+/** Describe the exact changed lines without including surrounding diff context. */
+export function summarizeHunk(lines: readonly string[]): string {
+  const removed = lines
+    .filter((line) => line.startsWith("-") && !line.startsWith("---"))
+    .map((line) => compactPreview(line.slice(1)))
+    .filter(Boolean);
+  const added = lines
+    .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
+    .map((line) => compactPreview(line.slice(1)))
+    .filter(Boolean);
+  if (removed.length === 1 && added.length === 1)
+    return `${removed[0]} → ${added[0]}`;
+  if (removed.length === 0 && added.length === 1) return `Added ${added[0]}`;
+  if (added.length === 0 && removed.length === 1)
+    return `Removed ${removed[0]}`;
+  if (removed.length === 0) return `Added ${added.length} lines`;
+  if (added.length === 0) return `Removed ${removed.length} lines`;
+  return `${removed.length} removed · ${added.length} added`;
+}
+
+/** Fingerprint only changed lines so identical edits group across varied context. */
+export function exactChangeHash(lines: readonly string[]): string {
+  return sha256(
+    lines
+      .filter(
+        (line) =>
+          (line.startsWith("+") && !line.startsWith("+++")) ||
+          (line.startsWith("-") && !line.startsWith("---")),
+      )
+      .join("\n"),
+  );
+}
+
 export function createEntryDiff(
   entryId: string,
   baseline = "",
@@ -44,6 +82,8 @@ export function createEntryDiff(
       newStart: hunk.newStart,
       newLines: hunk.newLines,
       contentHash,
+      changeHash: exactChangeHash(hunk.lines),
+      summary: summarizeHunk(hunk.lines),
       decision: decisions[id] ?? "pending",
       lines: hunk.lines,
     } satisfies TextHunk;

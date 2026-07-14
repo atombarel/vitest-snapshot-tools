@@ -1,13 +1,14 @@
 # vitest-snapshot-tools
 
-Safely capture, review, and apply Vitest 4 snapshot updates.
+Compact repeated Vitest 4 snapshot failures into exact change families, review
+each distinct change once, and safely apply only approved updates.
 
 `vitest-snapshot-tools` runs the target project's own Vitest installation,
 redirects snapshot candidates outside the repository, and writes only explicitly
 accepted changes. Review in a local authenticated UI or use the versioned JSON
 CLI for automation.
 
-![The vitest-snapshot-tools review workspace](https://raw.githubusercontent.com/atombarel/vitest-snapshot-tools/main/docs/images/review-workspace.png)
+![The vitest-snapshot-tools review workspace: one exact change family standing in for 40 identical snapshot failures, ready to accept everywhere with a single decision](https://raw.githubusercontent.com/atombarel/vitest-snapshot-tools/main/docs/images/change-families.png)
 
 ## Quick start
 
@@ -26,13 +27,29 @@ npx vitest-snapshot-tools -- --project unit
 
 Everything after `--` is passed to Vitest.
 
+## Agent skill and token-efficient review
+
+A repeated API or rendering change can appear in hundreds of snapshots. Instead
+of sending every diff through an agent, the CLI groups hunks with exactly the
+same added and removed lines. The agent reviews one representative diff and can
+accept or reject all occurrences with one `family_...` selector. Unique changes
+remain separate.
+
+```sh
+npx vitest-snapshot-tools skill install
+```
+
+Ask a Codex-compatible agent to use `$review-vitest-snapshots`. The bundled skill
+starts with exact families to reduce JSON payloads, repeated diff inspection,
+model context, and token usage while preserving preview and stale-write checks.
+
 ## Headless workflow
 
 ```sh
 npx vitest-snapshot-tools run --json -- src/example.test.ts
-npx vitest-snapshot-tools list --kind entry --status pending --json
+npx vitest-snapshot-tools families --status pending --json
 npx vitest-snapshot-tools diff entry_... --format unified
-npx vitest-snapshot-tools accept entry_...
+npx vitest-snapshot-tools accept family_...
 npx vitest-snapshot-tools preview --format patch
 npx vitest-snapshot-tools apply
 npx vitest-snapshot-tools verify

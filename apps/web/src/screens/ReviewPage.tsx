@@ -46,6 +46,7 @@ export function ReviewPage() {
   };
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState(params.entryId);
+  const [grouping, setGrouping] = useState<"family" | "test">("family");
   const [filter, setFilter] = useState("");
   const [status, setStatus] = useState<string>();
   const [themeMode, setThemeMode] = useState(() =>
@@ -62,14 +63,18 @@ export function ReviewPage() {
     refetchInterval: 1500,
   });
   const nodes = useQuery({
-    queryKey: ["nodes", params.sessionId, status],
-    queryFn: () => api.nodes(params.sessionId, "test", status),
+    queryKey: ["nodes", params.sessionId, grouping, status],
+    queryFn: () => api.nodes(params.sessionId, grouping, status),
     refetchInterval: 2000,
   });
+  const activeNode = (nodes.data?.items ?? []).find(
+    (node) => node.id === selected || node.entryId === selected,
+  );
+  const reviewEntryId = activeNode?.entryId ?? selected;
   const review = useQuery({
-    queryKey: ["review", params.sessionId, selected],
-    queryFn: () => api.review(params.sessionId, selected as string),
-    enabled: Boolean(selected),
+    queryKey: ["review", params.sessionId, reviewEntryId],
+    queryFn: () => api.review(params.sessionId, reviewEntryId as string),
+    enabled: Boolean(reviewEntryId),
   });
   const live = useStore(liveStore, (value) => value);
   useEffect(() => {
@@ -102,6 +107,9 @@ export function ReviewPage() {
       ),
     [nodes.data, filter],
   );
+  useEffect(() => {
+    if (!selected && list[0]) setSelected(list[0].id);
+  }, [list, selected]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: list.length,
@@ -111,38 +119,57 @@ export function ReviewPage() {
   });
   const renderedEntries = useMemo(
     () =>
-      (review.data?.entries ?? []).map((entry) => {
-        const language = inferSnapshotLanguage(entry.baseline, entry.candidate);
-        const extension = language ?? "snap";
-        return {
-          entry,
-          language,
-          fileDiff: parseDiffFromFile(
-            {
-              name: `baseline.${extension}`,
-              contents: entry.baseline,
-              ...(language ? { lang: language } : {}),
-              cacheKey: `b-${entry.hunks.map((h) => h.contentHash).join()}`,
-            },
-            {
-              name: `candidate.${extension}`,
-              contents: entry.candidate,
-              ...(language ? { lang: language } : {}),
-              cacheKey: `c-${entry.hunks.map((h) => h.contentHash).join()}`,
-            },
-            { context: 3 },
-          ),
-        };
-      }),
-    [review.data],
+      (review.data?.entries ?? [])
+        .filter(
+          (entry) =>
+            !activeNode?.familyHash ||
+            entry.hunks.some(
+              (hunk) =>
+                (hunk.changeHash ?? hunk.contentHash) === activeNode.familyHash,
+            ),
+        )
+        .map((entry) => {
+          const language = inferSnapshotLanguage(
+            entry.baseline,
+            entry.candidate,
+          );
+          const extension = language ?? "snap";
+          return {
+            entry,
+            language,
+            fileDiff: parseDiffFromFile(
+              {
+                name: `baseline.${extension}`,
+                contents: entry.baseline,
+                ...(language ? { lang: language } : {}),
+                cacheKey: `b-${entry.hunks.map((h) => h.contentHash).join()}`,
+              },
+              {
+                name: `candidate.${extension}`,
+                contents: entry.candidate,
+                ...(language ? { lang: language } : {}),
+                cacheKey: `c-${entry.hunks.map((h) => h.contentHash).join()}`,
+              },
+              { context: 3 },
+            ),
+          };
+        }),
+    [activeNode?.familyHash, review.data],
   );
   const visibleEntryIds = useMemo(
     () => review.data?.entries.map((entry) => entry.entryId) ?? [],
     [review.data],
   );
-  const linkedHookCount =
-    review.data?.source.blocks.filter((block) => block.kind !== "test")
-      .length ?? 0;
+  const decisionSelectors = useMemo(
+    () => (activeNode?.kind === "family" ? [activeNode.id] : visibleEntryIds),
+    [activeNode, visibleEntryIds],
+  );
+  const linkedBlocks =
+    review.data?.source.blocks.filter((block) => block.kind !== "test") ?? [];
+  const linkedHookCount = linkedBlocks.filter((block) =>
+    ["beforeAll", "beforeEach", "afterEach", "afterAll"].includes(block.kind),
+  ).length;
+  const linkedContextCount = linkedBlocks.length - linkedHookCount;
   const decide = useMutation({
     mutationFn: ({
       selectors,
@@ -185,12 +212,12 @@ export function ReviewPage() {
     const handler = (event: KeyboardEvent) => {
       if (!selected || event.target instanceof HTMLInputElement) return;
       if (event.key === "a")
-        decide.mutate({ selectors: visibleEntryIds, decision: "accepted" });
+        decide.mutate({ selectors: decisionSelectors, decision: "accepted" });
       if (event.key === "r")
-        decide.mutate({ selectors: visibleEntryIds, decision: "rejected" });
+        decide.mutate({ selectors: decisionSelectors, decision: "rejected" });
       if (event.key === "j" || event.key === "k") {
         const index = list.findIndex(
-          (item) => (item.entryId ?? item.id) === selected,
+          (item) => item.id === selected || item.entryId === selected,
         );
         setSelected(
           list[
@@ -204,7 +231,7 @@ export function ReviewPage() {
     };
     addEventListener("keydown", handler);
     return () => removeEventListener("keydown", handler);
-  }, [selected, list, visibleEntryIds, decide.mutate]);
+  }, [selected, list, decisionSelectors, decide.mutate]);
   const active = ["created", "collecting", "running", "cancelling"].includes(
     session.data?.state ?? "",
   );
@@ -284,16 +311,40 @@ export function ReviewPage() {
           <div className="panel-title">
             <div>
               <span className="kicker">Candidate index</span>
-              <strong>Snapshot changes</strong>
+              <strong>
+                {grouping === "family" ? "Change families" : "Snapshot tests"}
+              </strong>
             </div>
             <span className="count">{list.length}</span>
           </div>
+          <fieldset
+            className="grouping-row segmented"
+            aria-label="Group changes by"
+          >
+            {(["family", "test"] as const).map((value) => (
+              <button
+                type="button"
+                key={value}
+                className={grouping === value ? "selected" : ""}
+                onClick={() => {
+                  setGrouping(value);
+                  setSelected(undefined);
+                }}
+              >
+                {value === "family" ? "Families" : "Tests"}
+              </button>
+            ))}
+          </fieldset>
           <div className="search">
             <Search size={14} />
             <input
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              placeholder="Filter tests and entries…"
+              placeholder={
+                grouping === "family"
+                  ? "Filter change families…"
+                  : "Filter tests and entries…"
+              }
             />
           </div>
           <div className="filter-row">
@@ -322,17 +373,17 @@ export function ReviewPage() {
                   <button
                     type="button"
                     key={node.id}
-                    className={`tree-row ${node.decision} ${node.changeType ?? ""} ${selected === (node.entryId ?? node.id) ? "active" : ""}`}
+                    className={`tree-row ${node.decision} ${node.changeType ?? ""} ${selected === node.id || node.entryId === selected ? "active" : ""}`}
                     style={{ transform: `translateY(${row.start}px)` }}
-                    onClick={() => setSelected(node.entryId ?? node.id)}
+                    onClick={() => setSelected(node.id)}
                   >
                     <span className={`decision-dot ${node.decision}`} />
                     <span>
                       <strong>{node.label}</strong>
                       <small>
-                        {node.changeType ? `${node.changeType} · ` : ""}
-                        {node.childCount} snapshot
-                        {node.childCount === 1 ? "" : "s"}
+                        {node.kind === "family"
+                          ? `${node.childCount} occurrence${node.childCount === 1 ? "" : "s"} · ${node.testCount ?? 0} test${node.testCount === 1 ? "" : "s"}`
+                          : `${node.changeType ? `${node.changeType} · ` : ""}${node.childCount} snapshot${node.childCount === 1 ? "" : "s"}`}
                       </small>
                     </span>
                     <span
@@ -350,8 +401,16 @@ export function ReviewPage() {
         <main className="diff-panel">
           <div className="diff-toolbar">
             <div>
-              <span className="breadcrumb">TEST REVIEW</span>
-              <h1>{review.data?.test?.name ?? "Choose a snapshot change"}</h1>
+              <span className="breadcrumb">
+                {activeNode?.kind === "family"
+                  ? "EXACT CHANGE FAMILY"
+                  : "TEST REVIEW"}
+              </span>
+              <h1>
+                {activeNode?.kind === "family"
+                  ? activeNode.label
+                  : (review.data?.test?.name ?? "Choose a snapshot change")}
+              </h1>
             </div>
             <div className="toolbar-actions">
               <div className="segmented">
@@ -375,19 +434,53 @@ export function ReviewPage() {
           <div className="diff-scroll">
             {review.data ? (
               <div className="test-review-stack">
+                {activeNode?.kind === "family" ? (
+                  <section className="family-summary">
+                    <div>
+                      <span className="kicker">Compacted review</span>
+                      <strong>{activeNode.label}</strong>
+                      <p>
+                        Every occurrence has these exact added and removed
+                        lines; unchanged context may differ.
+                      </p>
+                    </div>
+                    <div className="family-metrics">
+                      <span>
+                        <b>{activeNode.childCount}</b> occurrences
+                      </span>
+                      <span>
+                        <b>{activeNode.testCount ?? 0}</b> tests
+                      </span>
+                      <span>
+                        <b>{activeNode.fileCount ?? 0}</b> files
+                      </span>
+                    </div>
+                  </section>
+                ) : null}
                 <section className="test-source-section">
                   <div className="review-section-heading">
                     <div>
                       <div>
-                        <strong>Test source</strong>
+                        <strong>
+                          {activeNode?.kind === "family"
+                            ? "Representative test source"
+                            : "Test source"}
+                        </strong>
                         <span>{review.data.source.relativePath}</span>
                       </div>
                     </div>
                     <span>
-                      {linkedHookCount
-                        ? `${linkedHookCount} linked hook${linkedHookCount === 1 ? "" : "s"}`
-                        : "No linked hooks"}{" "}
-                      · read only
+                      {[
+                        linkedContextCount
+                          ? `${linkedContextCount} context block${linkedContextCount === 1 ? "" : "s"}`
+                          : null,
+                        linkedHookCount
+                          ? `${linkedHookCount} linked hook${linkedHookCount === 1 ? "" : "s"}`
+                          : null,
+                        "read only",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </span>
                   </div>
                   <Suspense
@@ -410,7 +503,11 @@ export function ReviewPage() {
                   <div className="review-section-heading">
                     <div>
                       <div>
-                        <strong>Snapshot changes</strong>
+                        <strong>
+                          {activeNode?.kind === "family"
+                            ? "Representative snapshot change"
+                            : "Snapshot changes"}
+                        </strong>
                         <span>Baseline → candidate</span>
                       </div>
                     </div>
@@ -478,8 +575,8 @@ export function ReviewPage() {
                   {selected ? "Loading test review…" : "No snapshot selected"}
                 </strong>
                 <span>
-                  Select an entry to see its exact test source and every
-                  snapshot produced by that test.
+                  Select a change to see its exact test source and snapshot
+                  diff.
                 </span>
               </div>
             )}
@@ -534,29 +631,37 @@ export function ReviewPage() {
             <div className="decision-actions">
               <button
                 type="button"
-                disabled={visibleEntryIds.length === 0 || decide.isPending}
+                disabled={decisionSelectors.length === 0 || decide.isPending}
                 className="accept"
                 onClick={() =>
                   decide.mutate({
-                    selectors: visibleEntryIds,
+                    selectors: decisionSelectors,
                     decision: "accepted",
                   })
                 }
               >
-                <Check size={16} /> Accept test snapshots <kbd>A</kbd>
+                <Check size={16} />
+                {activeNode?.kind === "family"
+                  ? `Accept ${activeNode.childCount} occurrences`
+                  : "Accept test snapshots"}{" "}
+                <kbd>A</kbd>
               </button>
               <button
                 type="button"
-                disabled={visibleEntryIds.length === 0 || decide.isPending}
+                disabled={decisionSelectors.length === 0 || decide.isPending}
                 className="reject"
                 onClick={() =>
                   decide.mutate({
-                    selectors: visibleEntryIds,
+                    selectors: decisionSelectors,
                     decision: "rejected",
                   })
                 }
               >
-                <X size={16} /> Reject test snapshots <kbd>R</kbd>
+                <X size={16} />
+                {activeNode?.kind === "family"
+                  ? `Reject ${activeNode.childCount} occurrences`
+                  : "Reject test snapshots"}{" "}
+                <kbd>R</kbd>
               </button>
             </div>
             <div className="notice">

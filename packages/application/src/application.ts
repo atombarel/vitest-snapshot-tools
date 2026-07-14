@@ -64,6 +64,10 @@ export function createSnapshotApplication(
   const store = options.store ?? new SessionStore(options);
   const clock = options.clock ?? (() => new Date());
   const controllers = new Map<string, AbortController>();
+  const exactFamilyId = (contentHash: string) =>
+    stableId("family", contentHash);
+  const familyHash = (hunk: ReviewIndex["hunks"][number]) =>
+    hunk.changeHash ?? hunk.contentHash;
 
   async function entryValues(
     session: ReviewSession,
@@ -88,6 +92,14 @@ export function createSnapshotApplication(
     index: ReviewIndex,
     selector: string,
   ): StoredReviewEntry[] {
+    if (selector.startsWith("family_")) {
+      const entryIds = new Set(
+        index.hunks
+          .filter((hunk) => exactFamilyId(familyHash(hunk)) === selector)
+          .map((hunk) => hunk.entryId),
+      );
+      return index.entries.filter((entry) => entryIds.has(entry.id));
+    }
     if (selector.startsWith("entry_"))
       return index.entries.filter((entry) => entry.id === selector);
     if (selector.startsWith("file_"))
@@ -290,6 +302,99 @@ export function createSnapshotApplication(
             ...hunk,
             decision: decisions[hunk.id] ?? ("pending" as const),
           }));
+      const finishedTests = ["family", "test"].includes(input.kind ?? "")
+        ? (await store.readEvents(session)).filter(
+            (event) => event.type === "test.finished",
+          )
+        : [];
+      const testGroupName = (entry: StoredReviewEntry): string => {
+        const file = index.files.find((item) => item.id === entry.fileId);
+        const matches = finishedTests
+          .filter((event) => {
+            const eventId = String(event.payload.id ?? "");
+            const eventName = String(event.payload.name ?? "");
+            const eventFile = String(event.payload.file ?? "");
+            return (
+              (file?.testId
+                ? eventId === file.testId
+                : Boolean(file?.testFile && file.testFile === eventFile)) &&
+              Boolean(
+                eventName &&
+                  entry.testName &&
+                  (entry.testName === eventName ||
+                    entry.testName.startsWith(`${eventName} > `)),
+              )
+            );
+          })
+          .sort(
+            (left, right) =>
+              String(right.payload.name ?? "").length -
+              String(left.payload.name ?? "").length,
+          );
+        const matched = matches[0];
+        if (matched) return String(matched.payload.name ?? entry.key);
+        return entry.testName?.replace(/ > [^>]+$/, "") ?? entry.key;
+      };
+      if (input.kind === "family") {
+        const groups = new Map<string, typeof index.hunks>();
+        const entryById = new Map(
+          index.entries.map((entry) => [entry.id, entry]),
+        );
+        const fileById = new Map(index.files.map((file) => [file.id, file]));
+        for (const hunk of index.hunks) {
+          const fingerprint = familyHash(hunk);
+          const group = groups.get(fingerprint);
+          if (group) group.push(hunk);
+          else groups.set(fingerprint, [hunk]);
+        }
+        for (const [contentHash, hunks] of groups) {
+          const entryIds = [...new Set(hunks.map((hunk) => hunk.entryId))];
+          const entries = entryIds.flatMap((entryId) => {
+            const entry = entryById.get(entryId);
+            return entry ? [entry] : [];
+          });
+          const testIds = new Set(
+            entries.map((entry) => {
+              const file = fileById.get(entry.fileId);
+              return stableId(
+                "test",
+                "family",
+                file?.testFile ?? entry.fileId,
+                testGroupName(entry),
+              );
+            }),
+          );
+          const firstEntry = entries[0];
+          const firstHunk = hunks[0];
+          if (!firstEntry || !firstHunk) continue;
+          const changeTypes = new Set(entries.map((entry) => entry.changeType));
+          nodes.push({
+            id: exactFamilyId(contentHash),
+            kind: "family",
+            entryId: firstEntry.id,
+            label: firstHunk.summary ?? "Exact snapshot change",
+            decision: deriveDecision(
+              hunks.map((hunk) => ({
+                ...hunk,
+                decision: decisions[hunk.id] ?? ("pending" as const),
+              })),
+            ),
+            ...(changeTypes.size === 1
+              ? { changeType: firstEntry.changeType }
+              : {}),
+            childCount: hunks.length,
+            familyHash: contentHash,
+            testCount: testIds.size,
+            fileCount: new Set(entries.map((entry) => entry.fileId)).size,
+            confidence: "exact",
+          });
+        }
+        nodes.sort(
+          (left, right) =>
+            right.childCount - left.childCount ||
+            left.label.localeCompare(right.label),
+        );
+      }
       if (!input.kind || input.kind === "file")
         for (const file of index.files) {
           const entries = index.entries.filter((e) => e.fileId === file.id);
@@ -303,37 +408,6 @@ export function createSnapshotApplication(
           });
         }
       if (!input.kind || input.kind === "test") {
-        const finishedTests = (await store.readEvents(session)).filter(
-          (event) => event.type === "test.finished",
-        );
-        const testGroupName = (entry: StoredReviewEntry): string => {
-          const file = index.files.find((item) => item.id === entry.fileId);
-          const matches = finishedTests
-            .filter((event) => {
-              const eventId = String(event.payload.id ?? "");
-              const eventName = String(event.payload.name ?? "");
-              const eventFile = String(event.payload.file ?? "");
-              return (
-                (file?.testId
-                  ? eventId === file.testId
-                  : Boolean(file?.testFile && file.testFile === eventFile)) &&
-                Boolean(
-                  eventName &&
-                    entry.testName &&
-                    (entry.testName === eventName ||
-                      entry.testName.startsWith(`${eventName} > `)),
-                )
-              );
-            })
-            .sort(
-              (left, right) =>
-                String(right.payload.name ?? "").length -
-                String(left.payload.name ?? "").length,
-            );
-          const matched = matches[0];
-          if (matched) return String(matched.payload.name ?? entry.key);
-          return entry.testName?.replace(/ > [^>]+$/, "") ?? entry.key;
-        };
         const groups = new Map<string, StoredReviewEntry[]>();
         for (const entry of index.entries) {
           const id = stableId("test", entry.fileId, testGroupName(entry));
@@ -386,7 +460,7 @@ export function createSnapshotApplication(
           )
         : nodes;
       const offset = Number(input.cursor ?? 0);
-      const limit = Math.min(input.limit ?? 200, 500);
+      const limit = Math.min(input.limit ?? 200, 10_000);
       return {
         items: filtered.slice(offset, offset + limit),
         total: filtered.length,
@@ -655,13 +729,20 @@ export function createSnapshotApplication(
             "INLINE_SNAPSHOT_UNSUPPORTED",
             "Inline snapshot changes are captured as evidence but cannot be approved or applied in v1",
           );
+        const supportedEntryIds = new Set(entries.map((entry) => entry.id));
         const ids = input.selector.startsWith("hunk_")
           ? [input.selector]
-          : index.hunks
-              .filter((hunk) =>
-                entries.some((entry) => entry.id === hunk.entryId),
-              )
-              .map((hunk) => hunk.id);
+          : input.selector.startsWith("family_")
+            ? index.hunks
+                .filter(
+                  (hunk) =>
+                    supportedEntryIds.has(hunk.entryId) &&
+                    exactFamilyId(familyHash(hunk)) === input.selector,
+                )
+                .map((hunk) => hunk.id)
+            : index.hunks
+                .filter((hunk) => supportedEntryIds.has(hunk.entryId))
+                .map((hunk) => hunk.id);
         if (ids.length === 0)
           throw new VsnapError("SELECTOR_NOT_FOUND", input.selector);
         const decisions = await store.readDecisions(session);

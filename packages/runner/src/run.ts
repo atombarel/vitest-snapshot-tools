@@ -157,7 +157,17 @@ export async function rebuildReviewIndex(
       );
       index.hunks.push(
         ...diff.hunks.map(
-          ({ lines: _lines, decision: _decision, ...hunk }) => hunk,
+          ({
+            lines: _lines,
+            decision: _decision,
+            changeHash,
+            summary,
+            ...hunk
+          }) => ({
+            ...hunk,
+            ...(changeHash === undefined ? {} : { changeHash }),
+            ...(summary === undefined ? {} : { summary }),
+          }),
         ),
       );
       await emit?.("snapshot.discovered", {

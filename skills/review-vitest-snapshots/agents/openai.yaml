@@ -1,4 +1,4 @@
 interface:
   display_name: "Review Vitest Snapshots"
-  short_description: "Safely run, review, and apply Vitest snapshots"
-  default_prompt: "Use $review-vitest-snapshots to run the tests, inspect candidate snapshot changes, and safely apply approved updates."
+  short_description: "Compact repeated snapshot changes safely"
+  default_prompt: "Use $review-vitest-snapshots to compact repeated Vitest failures into exact families, review each distinct change once, and safely apply approved updates."

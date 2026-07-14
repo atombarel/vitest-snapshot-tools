@@ -332,47 +332,101 @@ function linkedSourceBlocks(
   const testEnd = callEndOffset(content, test.open);
   if (testEnd === undefined) return [];
   const testScope = scopeAt(structure.braces, test.offset);
-  const hooks = [...content.matchAll(/\b(beforeEach|afterEach)\s*\(/g)].flatMap(
-    (match) => {
-      const offset = match.index ?? 0;
-      if (structure.code[offset] !== 1) return [];
-      const kind = match[1] as "beforeEach" | "afterEach";
-      const open = content.indexOf("(", offset);
-      if (open < 0) return [];
-      const end = callEndOffset(content, open);
+  const importMatches = [
+    ...content.matchAll(/^[ \t]*import\b[\s\S]*?;[ \t]*$/gm),
+  ].filter((match) => structure.code[match.index ?? 0] === 1);
+  const imports = importMatches.length
+    ? [
+        blockFromLines(
+          content,
+          "imports",
+          lineAt(content, importMatches[0]?.index ?? 0),
+          lineAt(
+            content,
+            (importMatches.at(-1)?.index ?? 0) +
+              (importMatches.at(-1)?.[0].length ?? 0),
+          ),
+        ),
+      ]
+    : [];
+  const suites = occurrences(
+    content,
+    /\bdescribe(?:\.(?:only|skip|todo|each))?\s*\(/g,
+    structure.code,
+  )
+    .flatMap((suite) => {
+      const end = callEndOffset(content, suite.open);
       if (end === undefined) return [];
-      const scope = scopeAt(structure.braces, offset);
-      if (!isParentScope(scope, testScope)) return [];
+      const body = structure.braces
+        .filter(
+          (brace) =>
+            brace.start > suite.open &&
+            brace.start < end &&
+            testScope.includes(brace.start),
+        )
+        .sort((left, right) => left.start - right.start)[0];
+      if (!body) return [];
       return [
         {
-          kind,
-          offset,
-          scopeDepth: scope.length,
+          offset: suite.offset,
           block: blockFromLines(
             content,
-            kind,
-            lineAt(content, offset),
-            lineAt(content, end),
+            "suite",
+            suite.line,
+            lineAt(content, body.start),
           ),
         },
       ];
-    },
-  );
+    })
+    .sort((left, right) => left.offset - right.offset)
+    .map((suite) => suite.block);
+  const hooks = [
+    ...content.matchAll(/\b(beforeAll|beforeEach|afterEach|afterAll)\s*\(/g),
+  ].flatMap((match) => {
+    const offset = match.index ?? 0;
+    if (structure.code[offset] !== 1) return [];
+    const kind = match[1] as
+      | "beforeAll"
+      | "beforeEach"
+      | "afterEach"
+      | "afterAll";
+    const open = content.indexOf("(", offset);
+    if (open < 0) return [];
+    const end = callEndOffset(content, open);
+    if (end === undefined) return [];
+    const scope = scopeAt(structure.braces, offset);
+    if (!isParentScope(scope, testScope)) return [];
+    return [
+      {
+        kind,
+        offset,
+        scopeDepth: scope.length,
+        block: blockFromLines(
+          content,
+          kind,
+          lineAt(content, offset),
+          lineAt(content, end),
+        ),
+      },
+    ];
+  });
   const before = hooks
-    .filter((hook) => hook.kind === "beforeEach")
+    .filter((hook) => hook.kind === "beforeAll" || hook.kind === "beforeEach")
     .sort(
       (left, right) =>
         left.scopeDepth - right.scopeDepth || left.offset - right.offset,
     )
     .map((hook) => hook.block);
   const after = hooks
-    .filter((hook) => hook.kind === "afterEach")
+    .filter((hook) => hook.kind === "afterEach" || hook.kind === "afterAll")
     .sort(
       (left, right) =>
         right.scopeDepth - left.scopeDepth || left.offset - right.offset,
     )
     .map((hook) => hook.block);
   return [
+    ...imports,
+    ...suites,
     ...before,
     blockFromLines(content, "test", test.line, lineAt(content, testEnd)),
     ...after,

@@ -27,6 +27,12 @@ describe("test source location", () => {
     });
     expect(located.blocks).toEqual([
       {
+        kind: "suite",
+        content: 'describe("account", () => {',
+        startLine: 1,
+        endLine: 1,
+      },
+      {
         kind: "test",
         content:
           '  it("renders profile", () => {\n    expect({ id: 1 }).toMatchSnapshot("profile");\n    expect({ role: "admin" }).toMatchSnapshot("permissions");\n  });',
@@ -64,6 +70,7 @@ describe("account", () => {
       },
     });
     expect(located.blocks.map((block) => block.kind)).toEqual([
+      "suite",
       "beforeEach",
       "beforeEach",
       "test",
@@ -78,6 +85,43 @@ describe("account", () => {
     expect(reviewSource).toContain('it("renders profile"');
     expect(reviewSource).not.toContain("setupSibling");
     expect(reviewSource).not.toContain("renders another test");
+  });
+
+  it("includes imports, nested suites, and suite-level hooks", () => {
+    const content = `import { beforeAll, describe, expect, it } from "vitest";
+import { createAccount } from "./fixtures";
+
+describe("api", () => {
+  beforeAll(() => startApi());
+  describe("account", () => {
+    beforeEach(() => resetAccount());
+    it("renders profile", () => {
+      expect(createAccount()).toMatchSnapshot();
+    });
+    afterAll(() => stopAccount());
+  });
+});
+`;
+    const located = locateTestSource(content, "src/account.test.ts", {
+      snapshotFile: "src/__snapshots__/account.test.ts.snap",
+      snapshotKind: "external",
+      snapshotKey: "api > account > renders profile 1",
+      matcher: "toMatchSnapshot",
+      changeType: "modified",
+      test: { name: "api > account > renders profile" },
+    });
+    expect(located.blocks.map((block) => block.kind)).toEqual([
+      "imports",
+      "suite",
+      "suite",
+      "beforeAll",
+      "beforeEach",
+      "test",
+      "afterAll",
+    ]);
+    expect(located.blocks.map((block) => block.content).join("\n")).toContain(
+      'import { createAccount } from "./fixtures"',
+    );
   });
 
   it("matches a raw file snapshot by its target filename", () => {
