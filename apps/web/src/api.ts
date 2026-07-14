@@ -12,11 +12,18 @@ import type {
   TestSource,
 } from "@vsnap/protocol";
 
+const TOKEN_STORAGE_KEY = "vsnap-token";
 let bearerToken = "";
 export function consumeToken(): void {
   const fragment = new URLSearchParams(location.hash.slice(1));
-  bearerToken = fragment.get("token") ?? "";
-  history.replaceState(null, "", `${location.pathname}${location.search}`);
+  const fromHash = fragment.get("token");
+  // Persist the token so a browser refresh (which no longer carries the
+  // #token fragment) can still authenticate against the local server.
+  bearerToken = fromHash ?? sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "";
+  if (fromHash) {
+    sessionStorage.setItem(TOKEN_STORAGE_KEY, fromHash);
+    history.replaceState(null, "", `${location.pathname}${location.search}`);
+  }
 }
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {

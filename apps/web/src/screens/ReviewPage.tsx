@@ -9,6 +9,7 @@ import {
   Code2,
   Columns2,
   FileCode2,
+  LoaderCircle,
   Monitor,
   Moon,
   RotateCcw,
@@ -235,6 +236,31 @@ export function ReviewPage() {
     },
     onError: (error) => toast.error(error.message),
   });
+  const rerun = useMutation({
+    mutationFn: () => api.rerun(params.sessionId),
+    onSuccess: (updated) => {
+      // Reflect the freshly-started run immediately instead of waiting for the
+      // next poll, and clear stale live events so progress restarts clean.
+      queryClient.setQueryData(["session", params.sessionId], updated);
+      liveStore.setState((state) => ({
+        ...state,
+        events: [],
+        runningTests: {},
+        console: [],
+      }));
+      void queryClient.invalidateQueries({ queryKey: ["nodes"] });
+      void queryClient.invalidateQueries({ queryKey: ["review"] });
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  const cancel = useMutation({
+    mutationFn: () => api.cancel(params.sessionId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["session", params.sessionId],
+      }),
+    onError: (error) => toast.error(error.message),
+  });
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (!selected || event.target instanceof HTMLInputElement) return;
@@ -360,17 +386,29 @@ export function ReviewPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => api.cancel(params.sessionId)}
+                disabled={cancel.isPending}
+                onClick={() => cancel.mutate()}
               >
-                <Square /> Cancel
+                {cancel.isPending ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <Square />
+                )}
+                {cancel.isPending ? "Cancelling…" : "Cancel"}
               </Button>
             ) : (
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => api.rerun(params.sessionId)}
+                disabled={rerun.isPending}
+                onClick={() => rerun.mutate()}
               >
-                <RotateCcw /> Rerun
+                {rerun.isPending ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <RotateCcw />
+                )}
+                {rerun.isPending ? "Starting…" : "Rerun"}
               </Button>
             )}
           </div>
