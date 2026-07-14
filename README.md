@@ -16,12 +16,12 @@ own Vitest, captures every snapshot candidate in the OS cache, and writes
 approved changes back only when you run `vsnap apply` or choose **Preview &
 apply accepted** in the UI.
 
-![The vitest-snapshot-tools review workspace on a 100-test suite: one exact change family standing in for 40 identical snapshot failures, with a compacted-review summary, the representative test source, the baseline-to-candidate snapshot diff, and controls to accept all 40 occurrences at once](docs/images/change-families.png)
+![The vitest-snapshot-tools review workspace on a 100-test suite: a mocked external API-call change compacted into a 40-test exact family, with separate log and response families, the three snapshot matchers in the representative test, and the baseline-to-candidate outbound-call diff](docs/images/change-families.png)
 
 ## Highlights
 
 - **Review once, apply everywhere.** Identical diffs collapse into exact change
-  families, so a 100-failure run can become 14 decisions and a thousand-failure
+  families, so this 180-change demo becomes 16 decisions and a thousand-failure
   run collapses to the handful of distinct changes it actually contains.
 - **Nothing is written during capture.** A custom snapshot environment redirects
   Vitest's baseline and candidate output to a private cache. Repository files
@@ -72,12 +72,13 @@ Snapshot updates are unusually expensive—especially for coding agents. A
 one-line API change can fail hundreds of tests, and sending every nearly
 identical diff to a model wastes context, tool calls, and tokens.
 
-`vitest-snapshot-tools` fingerprints the exact added and removed lines in every
-hunk and groups identical fingerprints into **change families**. You inspect one
-representative diff, see how many occurrences, tests, and files it affects, and
-accept or reject the entire exact family with a single decision. Singletons and
-genuine outliers stay separate, so compaction never hides a unique change or
-relies on a model guessing that two diffs are equivalent.
+`vitest-snapshot-tools` fingerprints the complete set of exact added and removed
+lines in each snapshot entry and groups identical full diffs into **change
+families**. You inspect one representative diff, see how many occurrences,
+tests, and files it affects, and accept or reject the entire exact family with a
+single decision. Multi-hunk changes stay together, while singletons and genuine
+outliers remain separate, so compaction never hides a unique change or relies
+on a model guessing that two diffs are equivalent.
 
 For the bundled 100-test scale example, the review workload shrinks like this:
 
@@ -133,9 +134,9 @@ snapshots or when an automated agent is doing the review.
 
 1. **Capture** — run Vitest with an overlay snapshot environment and store the
    baseline and candidate outside the repository.
-2. **Review** — compact identical added and removed lines into exact change
-   families, or inspect the imports, owning suite, linked hooks, focused test,
-   snapshot matcher, and full diff.
+2. **Review** — compact identical complete snapshot-entry diffs into exact
+   change families, or inspect the imports, owning suite, linked hooks, focused
+   test, snapshot matcher, and full diff.
 3. **Decide** — accept or reject a family, file, test, entry, or individual diff
    hunk.
 4. **Preview** — inspect the exact patch assembled from accepted hunks.
@@ -176,10 +177,12 @@ exploring, restore the fixtures with `git restore examples/basic-vitest`.
 ### Change families at scale
 
 `examples/family-scale-vitest` generates a small deterministic HTTP application
-with routing, request-scoped structured logging, response envelopes, and 100
-integration-style tests. Each test snapshots a request summary, an API response,
-and emitted logs, producing recurring exact families of 40, 25, 15, and 10
-occurrences followed by ten deliberate outliers that must remain separate.
+with routing, a mocked outbound API, request-scoped structured logging, response
+envelopes, and 100 integration-style tests. Each test independently snapshots
+the recorded external API calls, emitted logs, and API response. The first 40
+tests therefore expose three distinct 40-occurrence families, followed by
+response families of 25, 15, and 10 occurrences and ten deliberate outliers
+that must remain separate.
 
 ```sh
 pnpm build

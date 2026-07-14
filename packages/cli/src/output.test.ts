@@ -29,7 +29,8 @@ describe("family output", () => {
         id: "family_api-version",
         kind: "family",
         entryId: "entry_customer-1",
-        label: "API version added",
+        label:
+          "external API calls in GET /v2/customers/:id · API version added",
         decision: "pending",
         childCount: 40,
         testCount: 40,
@@ -37,6 +38,6 @@ describe("family output", () => {
         confidence: "exact",
       }),
     ).toBe(
-      "family_api-version  pending  40 occurrences · 40 tests · 1 file · API version added",
+      "family_api-version  pending  40 occurrences · 40 tests · 1 file · external API calls in GET /v2/customers/:id · API version added",
     ));
 });

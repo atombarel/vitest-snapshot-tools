@@ -8,7 +8,7 @@ redirects snapshot candidates outside the repository, and writes only explicitly
 accepted changes. Review in a local authenticated UI or use the versioned JSON
 CLI for automation.
 
-![The vitest-snapshot-tools review workspace: one exact change family standing in for 40 identical snapshot failures, ready to accept everywhere with a single decision](https://raw.githubusercontent.com/atombarel/vitest-snapshot-tools/main/docs/images/change-families.png)
+![The vitest-snapshot-tools review workspace: a mocked external API-call change compacted into a 40-test exact family alongside separate log and response families](https://raw.githubusercontent.com/atombarel/vitest-snapshot-tools/main/docs/images/change-families.png)
 
 ## Quick start
 
@@ -30,10 +30,10 @@ Everything after `--` is passed to Vitest.
 ## Agent skill and token-efficient review
 
 A repeated API or rendering change can appear in hundreds of snapshots. Instead
-of sending every diff through an agent, the CLI groups hunks with exactly the
-same added and removed lines. The agent reviews one representative diff and can
-accept or reject all occurrences with one `family_...` selector. Unique changes
-remain separate.
+of sending every diff through an agent, the CLI groups snapshot entries with
+the same complete set of added and removed lines. The agent reviews one
+representative diff and can accept or reject all occurrences with one
+`family_...` selector. Unique changes remain separate.
 
 ```sh
 npx vitest-snapshot-tools skill install

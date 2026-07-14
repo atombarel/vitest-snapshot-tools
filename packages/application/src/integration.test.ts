@@ -94,6 +94,35 @@ describe("transactional integration", () => {
       firstFamilyHunk.changeHash ?? firstFamilyHunk.contentHash;
     if (firstFamilyHunk.summary !== undefined)
       secondFamilyHunk.summary = firstFamilyHunk.summary;
+    familyIndex.hunks.push(
+      {
+        ...firstFamilyHunk,
+        id: "hunk_first-entry-second-change",
+        oldStart: firstFamilyHunk.oldStart + 100,
+        newStart: firstFamilyHunk.newStart + 100,
+        contentHash: "first-entry-second-content",
+        changeHash: "shared-second-change",
+        summary: "Second related change",
+      },
+      {
+        ...secondFamilyHunk,
+        id: "hunk_second-entry-second-change",
+        oldStart: secondFamilyHunk.oldStart + 100,
+        newStart: secondFamilyHunk.newStart + 100,
+        contentHash: "second-entry-second-content",
+        changeHash: "different-second-change",
+        summary: "Second related change",
+      },
+    );
+    await store.writeIndex(session, familyIndex);
+    const splitFamilies = await app.listNodes({
+      sessionId: session.id,
+      kind: "family",
+    });
+    expect(splitFamilies.items).toHaveLength(2);
+    const secondRelatedHunk = familyIndex.hunks.at(-1);
+    if (!secondRelatedHunk) throw new Error("Expected a second related hunk");
+    secondRelatedHunk.changeHash = "shared-second-change";
     await store.writeIndex(session, familyIndex);
     const families = await app.listNodes({
       sessionId: session.id,
@@ -106,6 +135,9 @@ describe("transactional integration", () => {
       childCount: 2,
       testCount: 1,
       fileCount: 1,
+      label: expect.stringMatching(
+        /metadata \+ record in captures a value · 2 related changes/,
+      ),
     });
     const family = families.items[0];
     if (!family) throw new Error("Expected one exact change family");
@@ -114,7 +146,7 @@ describe("transactional integration", () => {
       selector: family.id,
       decision: "accepted",
     });
-    expect(familyDecision.affectedHunks).toHaveLength(2);
+    expect(familyDecision.affectedHunks).toHaveLength(4);
     const unsafeIndex = await store.readIndex(session);
     const sourceFile = unsafeIndex.files[0];
     if (!sourceFile) throw new Error("Expected indexed snapshot file");
