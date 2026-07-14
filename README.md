@@ -1,6 +1,7 @@
 # vitest-snapshot-tools
 
 [![CI](https://github.com/atombarel/vitest-snapshot-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/atombarel/vitest-snapshot-tools/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/vitest-snapshot-tools.svg)](https://www.npmjs.com/package/vitest-snapshot-tools)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Vitest 4](https://img.shields.io/badge/Vitest-4.x-6E9F18.svg)](https://vitest.dev/)
 
@@ -42,22 +43,25 @@ or outside a Git repository.
 - A project-local Vitest version in the `>=4 <5` range
 - macOS or Linux (the platforms currently covered by CI)
 
-## Install
+## Quick start
 
-Add the tool beside Vitest in the project you want to review:
+Run the published package from the root of any Vitest project:
 
 ```sh
-pnpm add -D vitest-snapshot-tools
+npx vitest-snapshot-tools
 ```
 
-Then start a review from that project's root:
+`npx` uses the project-local package when it is installed and downloads it for
+a one-off run otherwise. To pin the version for a project or team, add it as a
+development dependency:
 
 ```sh
-pnpm exec vsnap -- --project unit
+npm install --save-dev vitest-snapshot-tools
+npx vitest-snapshot-tools -- --project unit
 ```
 
 Everything after `--` is passed directly to Vitest. With no Vitest arguments,
-`pnpm exec vsnap` reviews the project's default Vitest configuration.
+`npx vitest-snapshot-tools` reviews the project's default Vitest configuration.
 
 The CLI prints the local review URL if a browser cannot be opened automatically.
 The server listens locally and requires a per-process bearer token.
@@ -95,16 +99,16 @@ git restore examples/basic-vitest
 
 ```sh
 # Run the default Vitest configuration and open the review UI
-pnpm exec vsnap
+npx vitest-snapshot-tools
 
 # Pass a file filter or any supported Vitest arguments
-pnpm exec vsnap -- src/account.test.ts --project unit
+npx vitest-snapshot-tools -- src/account.test.ts --project unit
 
 # Reopen the local UI without starting another run
-pnpm exec vsnap ui --no-run
+npx vitest-snapshot-tools ui --no-run
 
 # Reopen one known session
-pnpm exec vsnap ui --no-run --session <session-id>
+npx vitest-snapshot-tools ui --no-run --session <session-id>
 ```
 
 ### Review from the CLI
@@ -114,20 +118,20 @@ scripts and agents.
 
 ```sh
 # Capture candidates without opening the UI
-pnpm exec vsnap run --json -- src/account.test.ts
+npx vitest-snapshot-tools run --json -- src/account.test.ts
 
 # Inspect the newest session for this repository
-pnpm exec vsnap list --kind entry --status pending
-pnpm exec vsnap diff entry_... --format unified
+npx vitest-snapshot-tools list --kind entry --status pending
+npx vitest-snapshot-tools diff entry_... --format unified
 
 # Decide at entry, hunk, test, file, or entire-run scope
-pnpm exec vsnap accept entry_...
-pnpm exec vsnap reject hunk_...
+npx vitest-snapshot-tools accept entry_...
+npx vitest-snapshot-tools reject hunk_...
 
 # Inspect exactly what would be written, then apply and verify
-pnpm exec vsnap preview --format patch
-pnpm exec vsnap apply
-pnpm exec vsnap verify
+npx vitest-snapshot-tools preview --format patch
+npx vitest-snapshot-tools apply
+npx vitest-snapshot-tools verify
 ```
 
 Commands use the newest session for the current canonical repository unless you
@@ -189,7 +193,7 @@ The package includes a `review-vitest-snapshots` skill for Codex-compatible agen
 workflows:
 
 ```sh
-pnpm exec vsnap skill install
+npx vitest-snapshot-tools skill install
 ```
 
 The skill uses the JSON CLI rather than bypassing the decision and apply model.

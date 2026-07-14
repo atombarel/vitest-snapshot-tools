@@ -9,26 +9,33 @@ CLI for automation.
 
 ![The vitest-snapshot-tools review workspace](https://raw.githubusercontent.com/atombarel/vitest-snapshot-tools/main/docs/images/review-workspace.png)
 
-## Install
+## Quick start
 
 ```sh
-pnpm add -D vitest-snapshot-tools
-pnpm exec vsnap -- --project unit
+npx vitest-snapshot-tools -- --project unit
 ```
 
 Requires Node.js 22.14 or newer and a project-local Vitest version in the
-`>=4 <5` range. Everything after `--` is passed to Vitest.
+`>=4 <5` range. `npx` downloads the package for a one-off run or uses the local
+version when installed. To pin it for a project:
+
+```sh
+npm install --save-dev vitest-snapshot-tools
+npx vitest-snapshot-tools -- --project unit
+```
+
+Everything after `--` is passed to Vitest.
 
 ## Headless workflow
 
 ```sh
-pnpm exec vsnap run --json -- src/example.test.ts
-pnpm exec vsnap list --kind entry --status pending --json
-pnpm exec vsnap diff entry_... --format unified
-pnpm exec vsnap accept entry_...
-pnpm exec vsnap preview --format patch
-pnpm exec vsnap apply
-pnpm exec vsnap verify
+npx vitest-snapshot-tools run --json -- src/example.test.ts
+npx vitest-snapshot-tools list --kind entry --status pending --json
+npx vitest-snapshot-tools diff entry_... --format unified
+npx vitest-snapshot-tools accept entry_...
+npx vitest-snapshot-tools preview --format patch
+npx vitest-snapshot-tools apply
+npx vitest-snapshot-tools verify
 ```
 
 Vitest snapshot updates reach the repository only through `vsnap apply`. The
