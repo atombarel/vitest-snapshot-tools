@@ -569,6 +569,170 @@ kbd {
 }
 
 /* ---------------------------------------------------------------------------
+   Live run progress
+--------------------------------------------------------------------------- */
+.run-progress-panel {
+  flex: none;
+  display: grid;
+  gap: 10px;
+  padding: 12px 18px 13px;
+  border-bottom: 1px solid var(--line);
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--accent) 7%, var(--surface)),
+      color-mix(in srgb, var(--cyan) 4%, var(--surface))
+    ),
+    var(--surface);
+  box-shadow: var(--shadow-sm);
+  z-index: 2;
+}
+.run-progress-heading,
+.run-progress-heading > div,
+.run-progress-heading span,
+.run-progress-heading code,
+.run-progress-metrics,
+.run-progress-metrics span,
+.run-progress-activity span {
+  display: flex;
+  align-items: center;
+}
+.run-progress-heading {
+  justify-content: space-between;
+  gap: 16px;
+}
+.run-progress-heading > div {
+  gap: 10px;
+  min-width: 0;
+}
+.run-progress-heading span {
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.run-progress-heading strong {
+  color: var(--text-strong);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.run-progress-heading small {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.run-progress-heading code {
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.run-progress-spinner {
+  flex: none;
+  color: var(--accent);
+  animation: spin 1.2s linear infinite;
+}
+.run-execution-bar {
+  height: 7px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--line));
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+}
+.run-execution-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--cyan));
+  transition: width 0.3s var(--ease);
+}
+.run-execution-bar.indeterminate > span {
+  animation: progress-scan 1.4s ease-in-out infinite;
+}
+.run-progress-detail {
+  display: grid;
+  grid-template-columns: auto minmax(280px, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.run-progress-metrics {
+  gap: 16px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.run-progress-metrics span {
+  gap: 5px;
+}
+.run-progress-metrics svg,
+.run-progress-activity svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+.run-progress-panel .run-progress-metrics b {
+  color: var(--text-strong);
+}
+.run-progress-metrics span:first-child svg,
+.run-progress-activity .passed svg {
+  color: var(--green);
+}
+.run-progress-metrics .failed,
+.run-progress-metrics .failed b,
+.run-progress-activity .failed {
+  color: var(--red);
+}
+.run-progress-activity {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+.run-progress-activity span {
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.run-progress-activity span svg {
+  color: var(--green);
+}
+.run-progress-activity span.running svg,
+.run-progress-activity span.waiting svg {
+  color: var(--accent);
+  animation: spin 1.2s linear infinite;
+}
+.run-progress-activity small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes progress-scan {
+  0% {
+    transform: translateX(-110%);
+  }
+  50% {
+    transform: translateX(130%);
+  }
+  100% {
+    transform: translateX(360%);
+  }
+}
+
+/* ---------------------------------------------------------------------------
    Workspace grid
 --------------------------------------------------------------------------- */
 .workspace {

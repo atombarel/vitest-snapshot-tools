@@ -22,9 +22,10 @@ import {
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api, subscribeEvents } from "../api.js";
+import { RunProgress } from "../components/RunProgress.js";
 import { inferSnapshotLanguage } from "../diff-language.js";
 import { matcherInvocation } from "../snapshot-context.js";
-import { liveStore, reduceEvent } from "../store.js";
+import { beginLiveSession, liveStore, reduceEvent } from "../store.js";
 import { nextThemeMode, parseThemeMode, resolveTheme } from "../theme.js";
 
 const SourceCodeView = lazy(() =>
@@ -77,11 +78,16 @@ export function ReviewPage() {
     enabled: Boolean(reviewEntryId),
   });
   const live = useStore(liveStore, (value) => value);
+  const liveEvents = live.sessionId === params.sessionId ? live.events : [];
+  const runningTests =
+    live.sessionId === params.sessionId ? live.runningTests : {};
+  const consoleEvents = live.sessionId === params.sessionId ? live.console : [];
   useEffect(() => {
     const controller = new AbortController();
+    const afterSequence = beginLiveSession(params.sessionId);
     void subscribeEvents(
       params.sessionId,
-      liveStore.state.sequence,
+      afterSequence,
       reduceEvent,
       controller.signal,
     ).catch(() => undefined);
@@ -303,6 +309,13 @@ export function ReviewPage() {
           </button>
         )}
       </header>
+      {active && session.data ? (
+        <RunProgress
+          session={session.data}
+          events={liveEvents}
+          runningTests={runningTests}
+        />
+      ) : null}
       <div className="workspace">
         <aside className="tree-panel">
           <div className="panel-title">
@@ -674,11 +687,11 @@ export function ReviewPage() {
               <span className="kicker">
                 <Play size={12} /> Live activity
               </span>
-              {Object.values(live.runningTests).length === 0 &&
-              live.console.length === 0 ? (
+              {Object.values(runningTests).length === 0 &&
+              consoleEvents.length === 0 ? (
                 <span className="live-idle">Idle — no live output</span>
               ) : null}
-              {Object.values(live.runningTests)
+              {Object.values(runningTests)
                 .slice(0, 3)
                 .map((name) => (
                   <div className="live-test" key={name}>
@@ -686,7 +699,7 @@ export function ReviewPage() {
                     {name}
                   </div>
                 ))}
-              {live.console.slice(-3).map((event) => (
+              {consoleEvents.slice(-3).map((event) => (
                 <code key={event.sequence}>
                   {String(event.payload.content).trim()}
                 </code>
