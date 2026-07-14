@@ -77,11 +77,22 @@ function exchangeFor(index, candidate) {
     meta.schemaVersion = `experiment-${index}`;
 
   return {
-    request: {
-      method: request.method,
-      path: request.path,
-      requestId,
-    },
+    externalApiCalls: [
+      {
+        method: "GET",
+        url: `https://records.example.test/${route}/${index}`,
+        headers: {
+          accept: "application/json",
+          "x-api-version":
+            route === "customers"
+              ? candidate
+                ? "2026-07-14"
+                : "2026-06-01"
+              : "2026-07-14",
+          "x-request-id": requestId,
+        },
+      },
+    ],
     response: {
       status: 200,
       headers: {
@@ -98,6 +109,18 @@ function exchangeFor(index, candidate) {
         method: request.method,
         path: request.path,
         requestId,
+      },
+      {
+        level: "info",
+        event: "external-api.completed",
+        requestId,
+        status: 200,
+        upstreamContract:
+          route === "customers"
+            ? candidate
+              ? "customers-2026-07-14"
+              : "customers-2026-06-01"
+            : `${route}-2026-07-14`,
       },
       {
         level: "info",
@@ -161,6 +184,51 @@ export function createRequestLogger(requestId: string) {
 }
 `;
 
+const externalApiMock = `import type { HttpRequest } from "./contracts";
+
+export interface ExternalApiCall {
+  method: "GET";
+  url: string;
+  headers: Record<string, string>;
+}
+
+function resource(route: string, id: number): Record<string, unknown> {
+  const common = {
+    id: \`\${route.slice(0, 3)}_\${String(id).padStart(4, "0")}\`,
+    name: \`\${route[0].toUpperCase()}\${route.slice(1)} record \${id}\`,
+  };
+  if (route === "orders") return { ...common, state: "active" };
+  if (route === "invoices")
+    return { ...common, amount: id * 125, currency: "EUR" };
+  if (route === "permissions")
+    return { ...common, features: ["read", "write", "audit"] };
+  if (route === "experiments") return { ...common, enabled: true };
+  if (route === "revisions") return { ...common, revision: id };
+  return { ...common, tier: id % 2 === 0 ? "business" : "starter" };
+}
+
+export function createExternalApiMock() {
+  const calls: ExternalApiCall[] = [];
+  return {
+    async get(route: string, id: number, request: HttpRequest) {
+      calls.push({
+        method: "GET",
+        url: \`https://records.example.test/\${route}/\${id}\`,
+        headers: {
+          accept: "application/json",
+          "x-api-version": "2026-07-14",
+          "x-request-id": request.headers["x-request-id"],
+        },
+      });
+      return resource(route, id);
+    },
+    calls() {
+      return structuredClone(calls);
+    },
+  };
+}
+`;
+
 const router = `const routeNames = [
   "customers",
   "orders",
@@ -181,25 +249,13 @@ export function matchRoute(path: string): { route: RouteName; id: number } {
 `;
 
 const app = `import type { HttpRequest } from "./contracts";
+import type { createExternalApiMock } from "./external-api.mock";
 import { createRequestLogger } from "./logger";
 import { matchRoute } from "./router";
 
-function resource(route: string, id: number): Record<string, unknown> {
-  const common = {
-    id: \`\${route.slice(0, 3)}_\${String(id).padStart(4, "0")}\`,
-    name: \`\${route[0].toUpperCase()}\${route.slice(1)} record \${id}\`,
-  };
-  if (route === "orders") return { ...common, state: "active" };
-  if (route === "invoices")
-    return { ...common, amount: id * 125, currency: "EUR" };
-  if (route === "permissions")
-    return { ...common, features: ["read", "write", "audit"] };
-  if (route === "experiments") return { ...common, enabled: true };
-  if (route === "revisions") return { ...common, revision: id };
-  return { ...common, tier: id % 2 === 0 ? "business" : "starter" };
-}
-
-export function createCustomerPlatform() {
+export function createCustomerPlatform(
+  externalApi: ReturnType<typeof createExternalApiMock>,
+) {
   return {
     async handle(request: HttpRequest) {
       const requestId = request.headers["x-request-id"];
@@ -208,6 +264,11 @@ export function createCustomerPlatform() {
       logger.info("request.received", {
         method: request.method,
         path: request.path,
+      });
+      const body = await externalApi.get(route, id, request);
+      logger.info("external-api.completed", {
+        status: 200,
+        upstreamContract: \`\${route}-2026-07-14\`,
       });
 
       const meta: Record<string, unknown> = {
@@ -223,7 +284,7 @@ export function createCustomerPlatform() {
           "content-type": "application/json; charset=utf-8",
           "x-request-id": requestId,
         },
-        body: resource(route, id),
+        body,
         meta,
       };
       logger.info("response.sent", {
@@ -232,7 +293,7 @@ export function createCustomerPlatform() {
       });
 
       return {
-        request: { method: request.method, path: request.path, requestId },
+        externalApiCalls: externalApi.calls(),
         response,
         logs: logger.records(),
       };
@@ -244,6 +305,8 @@ export function createCustomerPlatform() {
 function testSource(index) {
   const request = requestFor(index);
   return `  it(${JSON.stringify(scenarioName(index))}, async () => {
+    const externalApi = createExternalApiMock();
+    const app = createCustomerPlatform(externalApi);
     const exchange = await app.handle({
       method: "GET",
       path: ${JSON.stringify(request.path)},
@@ -252,7 +315,9 @@ function testSource(index) {
         "x-request-id": ${JSON.stringify(request.headers["x-request-id"])},
       },
     });
-    expect(exchange).toMatchSnapshot();
+    expect(exchange.externalApiCalls).toMatchSnapshot("external API calls");
+    expect(exchange.logs).toMatchSnapshot("request logs");
+    expect(exchange.response).toMatchSnapshot("HTTP response");
   });`;
 }
 
@@ -274,16 +339,11 @@ ${Array.from({ length: last - first + 1 }, (_, offset) =>
   });`,
 );
 
-const source = `import { beforeAll, describe, expect, it } from "vitest";
+const source = `import { describe, expect, it } from "vitest";
 import { createCustomerPlatform } from "./app";
+import { createExternalApiMock } from "./external-api.mock";
 
 describe(${JSON.stringify(suiteName)}, () => {
-  let app: ReturnType<typeof createCustomerPlatform>;
-
-  beforeAll(() => {
-    app = createCustomerPlatform();
-  });
-
 ${routeSuites.join("\n\n")}
 });
 `;
@@ -293,12 +353,24 @@ const snapshots = [
   "",
   ...Array.from({ length: scenarioCount }, (_, offset) => {
     const index = offset + 1;
-    return `exports[\`${suiteName} > GET /v2/${routeFor(index)}/:id > ${scenarioName(index)} 1\`] = \`\n${formatSnapshotValue(exchangeFor(index, false))}\n\`;\n`;
+    const exchange = exchangeFor(index, false);
+    const testName = `${suiteName} > GET /v2/${routeFor(index)}/:id > ${scenarioName(index)}`;
+    return [
+      ["HTTP response", exchange.response],
+      ["external API calls", exchange.externalApiCalls],
+      ["request logs", exchange.logs],
+    ]
+      .map(
+        ([snapshotName, value]) =>
+          `exports[\`${testName} > ${snapshotName} 1\`] = \`\n${formatSnapshotValue(value)}\n\`;`,
+      )
+      .join("\n\n");
   }),
 ].join("\n");
 
 await mkdir(snapshotRoot, { recursive: true });
 await writeFile(resolve(sourceRoot, "contracts.ts"), contracts);
+await writeFile(resolve(sourceRoot, "external-api.mock.ts"), externalApiMock);
 await writeFile(resolve(sourceRoot, "logger.ts"), logger);
 await writeFile(resolve(sourceRoot, "router.ts"), router);
 await writeFile(resolve(sourceRoot, "app.ts"), app);
@@ -306,5 +378,5 @@ await writeFile(resolve(sourceRoot, "families.test.ts"), source);
 await writeFile(resolve(snapshotRoot, "families.test.ts.snap"), snapshots);
 
 console.log(
-  "Generated a deterministic HTTP app with 100 request/response/log snapshots: recurring families of 40, 25, 15, and 10 changes, plus 10 outliers.",
+  "Generated a deterministic HTTP app with 100 external-call/log/response snapshot sets: three recurring families of 40 plus families of 25, 15, and 10 changes, followed by 10 outliers.",
 );

@@ -38,7 +38,8 @@ const withSession = async (repositoryRoot, height, capture) => {
     token: "readme-screenshot-token",
   });
   try {
-    const sessionId = (await server.application.startRun({ repositoryRoot })).id;
+    const sessionId = (await server.application.startRun({ repositoryRoot }))
+      .id;
     const reviewUrl = new URL(`/runs/${sessionId}/review`, server.url);
     reviewUrl.hash = new URL(server.url).hash;
     const page = await createPage(height);
@@ -54,15 +55,19 @@ const withSession = async (repositoryRoot, height, capture) => {
 };
 
 try {
-  // Hero: one exact change family standing in for 40 identical snapshot
-  // failures, ready to accept everywhere with a single decision. Use a taller
-  // viewport so the compacted-review summary, the representative test source,
-  // and the representative snapshot diff all fit in one shot.
+  // Hero: one external-API-call family standing in for 40 identical snapshot
+  // changes alongside separate log and response families. Use a taller viewport
+  // so the summary, representative test source, and diff fit in one shot.
   await withSession(familyScaleRoot, 1360, async (page) => {
     await page.getByText("Change families", { exact: true }).waitFor();
+    await page.locator(".tree-row", { hasText: '"x-api-version"' }).click();
     await page.locator(".family-summary").waitFor();
     await page.locator(".source-code.ready").waitFor();
-    await page.locator(".snapshot-chunk").first().waitFor();
+    await page
+      .locator(".snapshot-chunk", {
+        hasText: 'toMatchSnapshot("external API calls")',
+      })
+      .waitFor();
     await page.locator(".diff-scroll").evaluate((element) => {
       element.scrollTop = 0;
     });
