@@ -32,30 +32,44 @@ describe("read-only source view", () => {
       contentHash: "a".repeat(64),
       blocks: [
         {
-          kind: "beforeEach",
-          content: "beforeEach(() => setup())",
+          kind: "imports",
+          content: 'import { expect } from "vitest"',
           startLine: 1,
           endLine: 1,
         },
         {
-          kind: "test",
-          content: "expect(value).toMatchSnapshot()",
+          kind: "suite",
+          content: 'describe("value", () => {',
           startLine: 2,
           endLine: 2,
         },
+        {
+          kind: "beforeEach",
+          content: "beforeEach(() => setup())",
+          startLine: 3,
+          endLine: 3,
+        },
+        {
+          kind: "test",
+          content: "expect(value).toMatchSnapshot()",
+          startLine: 4,
+          endLine: 4,
+        },
       ],
       focus: {
-        testLine: 2,
-        matcherLine: 2,
+        testLine: 4,
+        matcherLine: 4,
         matcherColumn: 14,
-        startLine: 2,
-        endLine: 2,
+        startLine: 4,
+        endLine: 4,
       },
     };
     const { container } = render(
       <SourceCodeView source={source} theme="dark" />,
     );
-    expect(await screen.findByText("beforeEach")).toBeDefined();
+    expect(await screen.findByText("imports")).toBeDefined();
+    expect(screen.getByText("owning suite")).toBeDefined();
+    expect(screen.getByText("before each")).toBeDefined();
     await waitFor(() =>
       expect(container.querySelector("[data-matcher-line]")).not.toBeNull(),
     );

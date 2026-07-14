@@ -1,0 +1,18 @@
+{
+  "name": "@vitest-snapshot-tools/example-family-scale",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node generate.mjs",
+    "review": "node generate.mjs && node ../../packages/vitest-snapshot-tools/dist/cli.js",
+    "review:headless": "node generate.mjs && node ../../packages/vitest-snapshot-tools/dist/cli.js run --json",
+    "families": "node ../../packages/vitest-snapshot-tools/dist/cli.js list --kind family",
+    "test": "node verify.mjs",
+    "verify": "node verify.mjs"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10",
+    "vitest-snapshot-tools": "workspace:*"
+  }
+}

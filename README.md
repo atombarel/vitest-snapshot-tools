@@ -26,8 +26,8 @@ an automated agent is doing the review.
 1. **Capture** — run Vitest with an overlay snapshot environment and store the
    baseline and candidate outside the repository.
 2. **Review** — compact identical added and removed lines into exact change
-   families, or inspect the owning test, linked hooks, snapshot matcher, and
-   full diff.
+   families, or inspect the imports, owning suite, linked hooks, focused test,
+   snapshot matcher, and full diff.
 3. **Decide** — accept or reject a family, file, test, entry, or individual
    diff hunk.
 4. **Preview** — inspect the exact patch assembled from accepted hunks.
@@ -93,6 +93,26 @@ If you apply changes while exploring the demo, restore its fixtures with:
 
 ```sh
 git restore examples/basic-vitest
+```
+
+### Try change families at scale
+
+The generated scale example contains 100 tests. It produces recurring exact
+change families with 40, 25, 15, and 10 occurrences, followed by ten deliberate
+outliers that must remain separate review items.
+
+```sh
+pnpm build
+pnpm --filter @vitest-snapshot-tools/example-family-scale review
+```
+
+The generator resets its ignored source and snapshot fixtures before every run,
+so the example can be repeated without restoring repository files.
+
+For a headless assertion of the expected family distribution:
+
+```sh
+pnpm --filter @vitest-snapshot-tools/example-family-scale verify
 ```
 
 ## Common workflows

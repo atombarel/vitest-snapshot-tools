@@ -1163,8 +1163,12 @@ kbd {
   padding-right: 24px;
   border-left: 2px solid transparent;
 }
+.source-block.imports .line,
+.source-block.suite .line,
+.source-block.beforeAll .line,
 .source-block.beforeEach .line,
-.source-block.afterEach .line {
+.source-block.afterEach .line,
+.source-block.afterAll .line {
   background: color-mix(in srgb, var(--cyan) 3%, transparent);
 }
 .source-code .line::before {

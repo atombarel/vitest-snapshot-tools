@@ -204,7 +204,14 @@ export interface EntryContent {
   hash: string | null;
 }
 export interface TestSourceBlock {
-  kind: "beforeEach" | "test" | "afterEach";
+  kind:
+    | "imports"
+    | "suite"
+    | "beforeAll"
+    | "beforeEach"
+    | "test"
+    | "afterEach"
+    | "afterAll";
   content: string;
   startLine: number;
   endLine: number;

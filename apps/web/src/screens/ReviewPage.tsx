@@ -164,9 +164,12 @@ export function ReviewPage() {
     () => (activeNode?.kind === "family" ? [activeNode.id] : visibleEntryIds),
     [activeNode, visibleEntryIds],
   );
-  const linkedHookCount =
-    review.data?.source.blocks.filter((block) => block.kind !== "test")
-      .length ?? 0;
+  const linkedBlocks =
+    review.data?.source.blocks.filter((block) => block.kind !== "test") ?? [];
+  const linkedHookCount = linkedBlocks.filter((block) =>
+    ["beforeAll", "beforeEach", "afterEach", "afterAll"].includes(block.kind),
+  ).length;
+  const linkedContextCount = linkedBlocks.length - linkedHookCount;
   const decide = useMutation({
     mutationFn: ({
       selectors,
@@ -467,10 +470,17 @@ export function ReviewPage() {
                       </div>
                     </div>
                     <span>
-                      {linkedHookCount
-                        ? `${linkedHookCount} linked hook${linkedHookCount === 1 ? "" : "s"}`
-                        : "No linked hooks"}{" "}
-                      · read only
+                      {[
+                        linkedContextCount
+                          ? `${linkedContextCount} context block${linkedContextCount === 1 ? "" : "s"}`
+                          : null,
+                        linkedHookCount
+                          ? `${linkedHookCount} linked hook${linkedHookCount === 1 ? "" : "s"}`
+                          : null,
+                        "read only",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </span>
                   </div>
                   <Suspense

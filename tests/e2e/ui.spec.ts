@@ -42,7 +42,15 @@ test("shows one exact test block above both of its snapshot chunks", async ({
   await expect(
     page.getByText("src/request-review.test.ts", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("2 linked hooks · read only")).toBeVisible();
+  await expect(
+    page.getByText("2 context blocks · 2 linked hooks · read only"),
+  ).toBeVisible();
+  await expect(page.locator(".source-block.imports")).toContainText(
+    'from "vitest"',
+  );
+  await expect(page.locator(".source-block.suite")).toContainText(
+    'describe("demo API request review"',
+  );
   await expect(page.locator(".source-block.beforeEach")).toContainText(
     "completedRequestIds = []",
   );

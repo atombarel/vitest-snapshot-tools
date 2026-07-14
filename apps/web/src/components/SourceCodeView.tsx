@@ -21,6 +21,16 @@ export interface SourceCodeViewProps {
   theme: ResolvedTheme;
 }
 
+const blockLabels: Record<TestSource["blocks"][number]["kind"], string> = {
+  imports: "imports",
+  suite: "owning suite",
+  beforeAll: "before all",
+  beforeEach: "before each",
+  test: "test",
+  afterEach: "after each",
+  afterAll: "after all",
+};
+
 export function SourceCodeView({ source, theme }: SourceCodeViewProps) {
   const [html, setHtml] = useState<string[]>([]);
   const container = useRef<HTMLDivElement>(null);
@@ -99,7 +109,7 @@ export function SourceCodeView({ source, theme }: SourceCodeViewProps) {
             >
               {block.kind === "test" ? null : (
                 <div className="source-block-label">
-                  <strong>{block.kind}</strong>
+                  <strong>{blockLabels[block.kind]}</strong>
                   <span>linked · line {block.startLine}</span>
                 </div>
               )}

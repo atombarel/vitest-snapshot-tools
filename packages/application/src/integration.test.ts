@@ -75,7 +75,10 @@ describe("transactional integration", () => {
     expect(source.content).toContain("toMatchSnapshot");
     expect(source.content).not.toContain("import { expect, it }");
     expect(source.content.trim()).toMatch(/^it\("captures a value"/);
-    expect(source.blocks.map((block) => block.kind)).toEqual(["test"]);
+    expect(source.blocks.map((block) => block.kind)).toEqual([
+      "imports",
+      "test",
+    ]);
     const review = await app.getTestReview({
       sessionId: session.id,
       entryId: entry.id,
