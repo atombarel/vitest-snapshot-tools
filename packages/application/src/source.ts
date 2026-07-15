@@ -296,6 +296,8 @@ function inferredTest(
     ? tests.find((test) => test.line === reportedLine)
     : undefined;
   if (reported) return reported;
+  const registration = reportedRegistration(content, context, structure);
+  if (registration) return registration;
 
   const expected = expectedTestName(context);
   if (!expected) return undefined;
@@ -475,11 +477,7 @@ function registrationContainingMatcher(
   context: SourceContext,
   structure: ReturnType<typeof scanSourceStructure>,
 ): CallOccurrence | undefined {
-  const calls = occurrences(
-    content,
-    /(?<![.$\w])[$A-Z_a-z][$\w]*(?:\s*\.\s*[$A-Z_a-z][$\w]*)*\s*(?=\()/g,
-    structure.code,
-  ).filter((call) => {
+  const calls = registrationCalls(content, structure).filter((call) => {
     const name = content.slice(call.offset, call.open);
     if (/\b(?:describe|beforeAll|beforeEach|afterEach|afterAll)\b/.test(name))
       return false;
@@ -505,6 +503,64 @@ function registrationContainingMatcher(
     : undefined;
   if (titled) return titled;
   return calls.sort((left, right) => left.offset - right.offset)[0];
+}
+
+function registrationCalls(
+  content: string,
+  structure: ReturnType<typeof scanSourceStructure>,
+): CallOccurrence[] {
+  return occurrences(
+    content,
+    /(?<![.$\w])[$A-Z_a-z][$\w]*(?:\s*\.\s*[$A-Z_a-z][$\w]*)*\s*(?=\()/g,
+    structure.code,
+  ).filter((call) => {
+    const name = content.slice(call.offset, call.open);
+    return !/\b(?:describe|beforeAll|beforeEach|afterEach|afterAll|expect|assert)\b/.test(
+      name,
+    );
+  });
+}
+
+function reportedRegistration(
+  content: string,
+  context: SourceContext,
+  structure: ReturnType<typeof scanSourceStructure>,
+): CallOccurrence | undefined {
+  const location = context.test?.location;
+  if (!location) return undefined;
+  if (
+    matcherOccurrences(content, context.matcher, structure.code).some(
+      (matcher) => matcher.line === location.line,
+    )
+  )
+    return undefined;
+  const lineStart =
+    location.line <= 1
+      ? 0
+      : content.split("\n", location.line - 1).join("\n").length + 1;
+  const locationOffset = lineStart + Math.max(0, location.column - 1);
+  const calls = registrationCalls(content, structure);
+  const sameLine = calls.filter((call) => call.line === location.line);
+  const containing = calls.filter((call) => {
+    const end = callChainEndOffset(content, call.open);
+    return (
+      end !== undefined &&
+      call.offset <= locationOffset &&
+      end >= locationOffset
+    );
+  });
+  const candidates = sameLine.length > 0 ? sameLine : containing;
+  if (candidates.length === 0) return undefined;
+  const leafName = expectedTestName(context)?.split(" > ").at(-1);
+  const titled = leafName
+    ? candidates.find((call) => occurrenceTitle(content, call) === leafName)
+    : undefined;
+  if (titled) return titled;
+  return candidates.sort(
+    (left, right) =>
+      Math.abs(occurrenceColumn(content, left) - location.column) -
+      Math.abs(occurrenceColumn(content, right) - location.column),
+  )[0];
 }
 
 function blockFromLines(

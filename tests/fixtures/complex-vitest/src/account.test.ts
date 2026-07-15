@@ -1,14 +1,14 @@
-import { describe, expect, it } from "vitest";
-
-const logsRequest = (title: string, run: () => void) => it(title, run);
+import { describe } from "vitest";
+import { registerLogRequest } from "./shared-tests";
 
 describe.each([
   { kind: "authentication" },
   { kind: "authorisation" },
 ])("authentications for $kind", ({ kind }) => {
   describe("snapshot in one", () => {
-    logsRequest("should have called partners", () => {
-      expect({ kind, state: "candidate" }).toMatchSnapshot();
+    registerLogRequest({
+      title: "should have called partners",
+      kind,
     });
   });
 });

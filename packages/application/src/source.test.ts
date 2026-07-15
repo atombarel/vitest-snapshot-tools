@@ -329,4 +329,67 @@ describe.each([
     );
     expect(located.blocks[2]?.content).not.toContain("const logsRequest");
   });
+
+  it("uses the runtime callsite when an imported helper owns the test and matcher", () => {
+    const content = `import { registerLogRequest } from "./shared-tests";
+
+describe.each([{ kind: "authorisation" }])(
+  "authentications for $kind",
+  ({ kind }) => {
+    describe("snapshot in one", () => {
+      registerLogRequest({
+        title: "should have called partners",
+        run: () => executeRequest(kind),
+      });
+    });
+  },
+);
+`;
+    const located = locateTestSource(content, "src/account.test.ts", {
+      snapshotFile: "src/__snapshots__/account.test.ts.snap",
+      snapshotKind: "external",
+      snapshotKey:
+        "authentications for authorisation > snapshot in one > should have called partners 1",
+      matcher: "toMatchSnapshot",
+      changeType: "modified",
+      ordinal: 1,
+      test: {
+        name: "authentications for authorisation > snapshot in one > should have called partners",
+        location: { line: 7, column: 7 },
+        suites: [
+          {
+            id: "suite_each",
+            name: "authentications for authorisation",
+            location: { line: 3, column: 1 },
+          },
+          {
+            id: "suite_nested",
+            name: "snapshot in one",
+            location: { line: 6, column: 5 },
+          },
+        ],
+      },
+    });
+
+    expect(located.focus).toMatchObject({
+      testLine: 7,
+      startLine: 7,
+      endLine: 10,
+    });
+    expect(located.focus.matcherLine).toBeUndefined();
+    expect(located.blocks.map((block) => block.kind)).toEqual([
+      "suite",
+      "suite",
+      "test",
+    ]);
+    expect(located.blocks[0]?.content).toContain("describe.each");
+    expect(located.blocks[1]?.content).toContain('describe("snapshot in one"');
+    expect(located.blocks[2]?.content).toContain("registerLogRequest({");
+    expect(located.blocks[2]?.content).toContain(
+      'title: "should have called partners"',
+    );
+    expect(
+      located.blocks.map((block) => block.content).join("\n"),
+    ).not.toContain('from "./shared-tests"');
+  });
 });
