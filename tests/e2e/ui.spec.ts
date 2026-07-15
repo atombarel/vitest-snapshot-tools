@@ -19,7 +19,7 @@ test.beforeAll(async () => {
   ).id;
 });
 
-test("shows the full innermost suite above both snapshot chunks", async ({
+test("shows selected suite context above both snapshot chunks", async ({
   page,
 }) => {
   const requestedReviewEntries = new Set<string>();
@@ -51,6 +51,15 @@ test("shows the full innermost suite above both snapshot chunks", async ({
   );
   await expect(page.locator(".source-occurrence-title")).toHaveText(
     "shared API contract > returns a customer",
+  );
+  await expect(page.locator(".source-code")).toContainText(
+    'it("returns a customer"',
+  );
+  await expect(page.locator(".source-code")).not.toContainText(
+    'it("returns an invoice"',
+  );
+  await expect(page.locator(".source-code")).not.toContainText(
+    'it("returns a subscription"',
   );
   await expect
     .poll(() => requestedReviewEntries.size)
@@ -125,7 +134,7 @@ test("shows the full innermost suite above both snapshot chunks", async ({
   await expect(page.locator(".source-code")).toContainText(
     'it("lists active customers"',
   );
-  await expect(page.locator(".source-code")).toContainText(
+  await expect(page.locator(".source-code")).not.toContainText(
     'it("creates an invoice"',
   );
   await expect(page.locator(".snapshot-context")).toHaveCount(0);

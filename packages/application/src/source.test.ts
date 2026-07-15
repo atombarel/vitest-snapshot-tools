@@ -29,14 +29,14 @@ describe("test source location", () => {
       {
         kind: "suite",
         content:
-          'describe("account", () => {\n  it("renders profile", () => {\n    expect({ id: 1 }).toMatchSnapshot("profile");\n    expect({ role: "admin" }).toMatchSnapshot("permissions");\n  });\n});',
+          'describe("account", () => {\n  it("renders profile", () => {\n    expect({ id: 1 }).toMatchSnapshot("profile");\n    expect({ role: "admin" }).toMatchSnapshot("permissions");\n  });',
         startLine: 1,
-        endLine: 6,
+        endLine: 5,
       },
     ]);
   });
 
-  it("shows the full innermost suite while excluding sibling scopes", () => {
+  it("shows suite context through the selected test without trailing siblings", () => {
     const content = `beforeEach(() => setupRoot());
 afterEach(() => cleanupRoot());
 describe("sibling", () => {
@@ -74,7 +74,7 @@ describe("account", () => {
     expect(reviewSource).toContain("setupRoot");
     expect(reviewSource).toContain("setupAccount");
     expect(reviewSource).toContain('it("renders profile"');
-    expect(reviewSource).toContain("renders another test");
+    expect(reviewSource).not.toContain("renders another test");
     expect(reviewSource).not.toContain("setupSibling");
   });
 
@@ -105,9 +105,11 @@ describe("api", () => {
       "suite",
       "suite",
       "beforeAll",
+      "afterAll",
     ]);
     expect(located.blocks[1]?.content).toContain("resetAccount");
-    expect(located.blocks[1]?.content).toContain("stopAccount");
+    expect(located.blocks[1]?.content).not.toContain("stopAccount");
+    expect(located.blocks[3]?.content).toContain("stopAccount");
   });
 
   it("matches a raw file snapshot by its target filename", () => {
@@ -380,7 +382,7 @@ describe.each([{ kind: "authorisation" }])(
     ).not.toContain('from "./shared-tests"');
   });
 
-  it("shows the full lexical suite surrounding a common-test registrar", () => {
+  it("shows lexical suite context through a common-test registrar", () => {
     const content = `const makeCommonTests = (getContext) => {
   describe("common request tests", () => registerTests(getContext));
 };
@@ -423,16 +425,18 @@ describe.each([{ role: "authorisation" }])("for $role", ({ role }) => {
     expect(located.blocks.map((block) => block.kind)).toEqual([
       "suite",
       "suite",
+      "afterEach",
     ]);
     expect(located.blocks[0]).toMatchObject({ startLine: 2, endLine: 2 });
     expect(located.blocks[0]?.content).toContain(
       'describe("common request tests"',
     );
-    expect(located.blocks[1]).toMatchObject({ startLine: 5, endLine: 13 });
+    expect(located.blocks[1]).toMatchObject({ startLine: 5, endLine: 10 });
     expect(located.blocks[1]?.content).toContain("beforeEach(async () => {");
     expect(located.blocks[1]?.content).toContain(
       "makeCommonTests(() => context);",
     );
-    expect(located.blocks[1]?.content).toContain("afterEach(() =>");
+    expect(located.blocks[1]?.content).not.toContain("afterEach(() =>");
+    expect(located.blocks[2]?.content).toContain("afterEach(() =>");
   });
 });
