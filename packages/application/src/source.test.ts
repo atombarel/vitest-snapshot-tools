@@ -111,7 +111,6 @@ describe("api", () => {
       test: { name: "api > account > renders profile" },
     });
     expect(located.blocks.map((block) => block.kind)).toEqual([
-      "imports",
       "suite",
       "suite",
       "beforeAll",
@@ -119,9 +118,6 @@ describe("api", () => {
       "test",
       "afterAll",
     ]);
-    expect(located.blocks.map((block) => block.content).join("\n")).toContain(
-      'import { createAccount } from "./fixtures"',
-    );
   });
 
   it("matches a raw file snapshot by its target filename", () => {
@@ -137,5 +133,61 @@ describe("api", () => {
         test: { name: "writes status" },
       }).focus,
     ).toMatchObject({ testLine: 1, matcherLine: 2 });
+  });
+
+  it("recovers the test when Vitest reports the matcher line", () => {
+    const content = `describe("account", () => {
+  // The snapshot assertion is intentionally below the declaration.
+  it("renders profile", () => {
+    expect({ id: 1 }).toMatchSnapshot("profile");
+  });
+});
+`;
+    const located = locateTestSource(content, "src/account.test.ts", {
+      snapshotFile: "src/__snapshots__/account.test.ts.snap",
+      snapshotKind: "external",
+      snapshotKey: "account > renders profile > profile 1",
+      matcher: "toMatchSnapshot",
+      snapshotName: "profile",
+      changeType: "modified",
+      ordinal: 1,
+      test: {
+        name: "account > renders profile",
+        location: { line: 4, column: 5 },
+      },
+    });
+
+    expect(located.focus).toMatchObject({
+      testLine: 3,
+      matcherLine: 4,
+      startLine: 3,
+      endLine: 5,
+    });
+    expect(located.blocks).toHaveLength(2);
+    expect(located.blocks[1]?.content).toContain('it("renders profile"');
+  });
+
+  it("uses the matcher to recover source without test metadata", () => {
+    const content = `it("renders profile", () => {
+  expect({ id: 1 }).toMatchSnapshot("profile");
+});
+`;
+    const located = locateTestSource(content, "src/account.test.ts", {
+      snapshotFile: "src/__snapshots__/account.test.ts.snap",
+      snapshotKind: "external",
+      snapshotKey: "renders profile > profile 1",
+      matcher: "toMatchSnapshot",
+      snapshotName: "profile",
+      changeType: "modified",
+      ordinal: 1,
+    });
+
+    expect(located.focus).toMatchObject({
+      testLine: 1,
+      matcherLine: 2,
+      startLine: 1,
+      endLine: 3,
+    });
+    expect(located.blocks[0]?.content).toContain('it("renders profile"');
   });
 });

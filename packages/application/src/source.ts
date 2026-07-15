@@ -181,11 +181,16 @@ function inferredTestLine(
   content: string,
   context: SourceContext,
 ): number | undefined {
-  if (context.test?.location?.line) return context.test.location.line;
   const leafName = context.test?.name?.split(" > ").at(-1);
-  if (!leafName) return undefined;
   const lines = content.split("\n");
   const declarationLines = new Set(testDeclarationLines(content));
+  // Some Vitest versions/integrations report the matcher (or a nearby
+  // comment) instead of the test declaration. Only trust a reported line
+  // when it actually contains a test declaration.
+  const reportedLine = context.test?.location?.line;
+  if (reportedLine && declarationLines.has(reportedLine)) return reportedLine;
+
+  if (!leafName) return undefined;
   const exact = lines.findIndex(
     (line, index) => declarationLines.has(index + 1) && line.includes(leafName),
   );
@@ -332,23 +337,6 @@ function linkedSourceBlocks(
   const testEnd = callEndOffset(content, test.open);
   if (testEnd === undefined) return [];
   const testScope = scopeAt(structure.braces, test.offset);
-  const importMatches = [
-    ...content.matchAll(/^[ \t]*import\b[\s\S]*?;[ \t]*$/gm),
-  ].filter((match) => structure.code[match.index ?? 0] === 1);
-  const imports = importMatches.length
-    ? [
-        blockFromLines(
-          content,
-          "imports",
-          lineAt(content, importMatches[0]?.index ?? 0),
-          lineAt(
-            content,
-            (importMatches.at(-1)?.index ?? 0) +
-              (importMatches.at(-1)?.[0].length ?? 0),
-          ),
-        ),
-      ]
-    : [];
   const suites = occurrences(
     content,
     /\bdescribe(?:\.(?:only|skip|todo|each))?\s*\(/g,
@@ -425,7 +413,6 @@ function linkedSourceBlocks(
     )
     .map((hook) => hook.block);
   return [
-    ...imports,
     ...suites,
     ...before,
     blockFromLines(content, "test", test.line, lineAt(content, testEnd)),
@@ -440,13 +427,31 @@ export function locateTestSource(
 ): Pick<TestSource, "language" | "focus" | "blocks"> {
   const lines = content.split("\n");
   const lineCount = content.endsWith("\n") ? lines.length - 1 : lines.length;
-  const testLine = inferredTestLine(content, context);
-  const matcher = chooseMatcher(content, context, testLine);
-  const anchor = testLine ?? matcher?.line ?? 1;
   const structure = scanSourceStructure(content);
-  const test = testOccurrences(content, structure.code).find(
-    (occurrence) => occurrence.line === testLine,
-  );
+  let testLine = inferredTestLine(content, context);
+  const matcher = chooseMatcher(content, context, testLine);
+  const tests = testOccurrences(content, structure.code);
+  let test = testLine
+    ? tests.find((occurrence) => occurrence.line === testLine)
+    : undefined;
+  // Historical sessions may have a file association but no test name or
+  // location. In that case, use the matcher to find the enclosing test.
+  if (!test && matcher) {
+    test = tests
+      .map((occurrence) => ({
+        occurrence,
+        end: callEndOffset(content, occurrence.open),
+      }))
+      .filter(
+        (candidate) =>
+          candidate.end !== undefined &&
+          candidate.occurrence.line <= matcher.line &&
+          lineAt(content, candidate.end) >= matcher.line,
+      )
+      .at(-1)?.occurrence;
+    if (test) testLine = test.line;
+  }
+  const anchor = testLine ?? matcher?.line ?? 1;
   const endLine = Math.min(
     lineCount,
     test

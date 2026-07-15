@@ -22,6 +22,7 @@ test.beforeAll(async () => {
 test("shows one exact test block above both of its snapshot chunks", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
   await page.emulateMedia({ colorScheme: "dark" });
   const reviewUrl = new URL(`/runs/${sessionId}/review`, server.url);
   reviewUrl.hash = new URL(server.url).hash;
@@ -43,11 +44,9 @@ test("shows one exact test block above both of its snapshot chunks", async ({
     page.getByText("src/request-review.test.ts", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("2 context blocks · 2 linked hooks · read only"),
+    page.getByText("1 context block · 2 linked hooks · read only"),
   ).toBeVisible();
-  await expect(page.locator(".source-block.imports")).toContainText(
-    'from "vitest"',
-  );
+  await expect(page.locator(".source-block.imports")).toHaveCount(0);
   await expect(page.locator(".source-block.suite")).toContainText(
     'describe("demo API request review"',
   );
@@ -80,8 +79,22 @@ test("shows one exact test block above both of its snapshot chunks", async ({
     const tree = document.querySelector<HTMLElement>(".tree-panel");
     const center = document.querySelector<HTMLElement>(".diff-panel");
     const scroll = document.querySelector<HTMLElement>(".diff-scroll");
+    const content = document.querySelector<HTMLElement>(".review-content");
+    const sourcePreview =
+      document.querySelector<HTMLElement>(".source-preview");
     const source = document.querySelector<HTMLElement>(".source-code");
-    if (!shell || !workspace || !tree || !center || !scroll || !source)
+    const chunk = document.querySelector<HTMLElement>(".snapshot-chunk");
+    if (
+      !shell ||
+      !workspace ||
+      !tree ||
+      !center ||
+      !scroll ||
+      !content ||
+      !sourcePreview ||
+      !source ||
+      !chunk
+    )
       throw new Error("Review layout is incomplete");
 
     const treeTop = tree.getBoundingClientRect().top;
@@ -89,12 +102,15 @@ test("shows one exact test block above both of its snapshot chunks", async ({
 
     return {
       centerOverflow: getComputedStyle(center).overflow,
+      chunkWidth: chunk.getBoundingClientRect().width,
+      contentWidth: content.getBoundingClientRect().width,
       documentHeight: document.documentElement.scrollHeight,
       pageScrollY: window.scrollY,
       scrollOverflowY: getComputedStyle(scroll).overflowY,
       scrollTop: scroll.scrollTop,
       shellOverflow: getComputedStyle(shell).overflow,
       sourceOverflowY: getComputedStyle(source).overflowY,
+      sourceWidth: sourcePreview.getBoundingClientRect().width,
       treeBottom: tree.getBoundingClientRect().bottom,
       treeTopAfterCenterScroll: tree.getBoundingClientRect().top,
       treeTop,
@@ -112,12 +128,38 @@ test("shows one exact test block above both of its snapshot chunks", async ({
     workspaceOverflow: "hidden",
   });
   expect(scrollLayout.scrollTop).toBeGreaterThan(0);
+  expect(scrollLayout.contentWidth).toBeGreaterThan(1_100);
+  expect(scrollLayout.sourceWidth).toBe(scrollLayout.contentWidth);
+  expect(scrollLayout.chunkWidth).toBe(scrollLayout.contentWidth);
   expect(scrollLayout.documentHeight).toBeLessThanOrEqual(
     scrollLayout.viewportHeight,
   );
   expect(scrollLayout.treeBottom).toBeLessThanOrEqual(
     scrollLayout.viewportHeight,
   );
+
+  await page.setViewportSize({ width: 900, height: 900 });
+  const compactLayout = await page.evaluate(() => {
+    const scroll = document.querySelector<HTMLElement>(".diff-scroll");
+    const content = document.querySelector<HTMLElement>(".review-content");
+    const source = document.querySelector<HTMLElement>(".source-preview");
+    const chunk = document.querySelector<HTMLElement>(".snapshot-chunk");
+    if (!scroll || !content || !source || !chunk)
+      throw new Error("Responsive review layout is incomplete");
+
+    return {
+      availableWidth: scroll.clientWidth,
+      chunkWidth: chunk.getBoundingClientRect().width,
+      contentWidth: content.getBoundingClientRect().width,
+      sourceWidth: source.getBoundingClientRect().width,
+    };
+  });
+  expect(compactLayout.contentWidth).toBeLessThan(scrollLayout.contentWidth);
+  expect(compactLayout.contentWidth).toBeLessThanOrEqual(
+    compactLayout.availableWidth,
+  );
+  expect(compactLayout.sourceWidth).toBe(compactLayout.contentWidth);
+  expect(compactLayout.chunkWidth).toBe(compactLayout.contentWidth);
 
   await page.getByRole("button", { name: /theme: system/i }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
