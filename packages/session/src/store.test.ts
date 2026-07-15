@@ -104,4 +104,33 @@ describe("SessionStore", () => {
     expect(second.events.map((event) => event.sequence)).toEqual([2]);
     expect(second.offset).toBeGreaterThan(first.offset);
   });
+  it("appends event batches as ordered NDJSON records", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vsnap-repo-"));
+    const store = new SessionStore({
+      cacheRoot: await mkdtemp(join(tmpdir(), "vsnap-cache-")),
+    });
+    const session = await store.create(root);
+    await store.appendEvents(session, [
+      {
+        schemaVersion: 1,
+        sequence: 1,
+        sessionId: session.id,
+        type: "run.started",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        payload: {},
+      },
+      {
+        schemaVersion: 1,
+        sequence: 2,
+        sessionId: session.id,
+        type: "run.finished",
+        timestamp: "2026-01-01T00:00:01.000Z",
+        payload: {},
+      },
+    ]);
+
+    expect(
+      (await store.readEvents(session)).map((event) => event.sequence),
+    ).toEqual([1, 2]);
+  });
 });

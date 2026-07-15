@@ -298,9 +298,21 @@ export class SessionStore {
   }
 
   async appendEvent(session: ReviewSession, event: RunEvent): Promise<void> {
-    RunEventSchema.parse(event);
+    await this.appendEvents(session, [event]);
+  }
+
+  async appendEvents(
+    session: ReviewSession,
+    events: readonly RunEvent[],
+  ): Promise<void> {
+    if (events.length === 0) return;
+    for (const event of events) RunEventSchema.parse(event);
     const path = join(this.sessionDirectory(session), "events.ndjson");
-    await appendFile(path, `${JSON.stringify(event)}\n`, { mode: 0o600 });
+    await appendFile(
+      path,
+      events.map((event) => `${JSON.stringify(event)}\n`).join(""),
+      { mode: 0o600 },
+    );
   }
 
   async readEvents(
