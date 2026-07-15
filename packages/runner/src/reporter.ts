@@ -1,5 +1,4 @@
 import type { RunEvent } from "@vsnap/protocol";
-import type { UserConsoleLog } from "vitest";
 import type { Reporter, TestCase, TestModule, TestSuite } from "vitest/node";
 
 export type EventSink = (
@@ -76,14 +75,9 @@ export class SnapshotReporter implements Reporter {
       errors: suite.errors(),
     });
   }
-  async onUserConsoleLog(log: UserConsoleLog): Promise<void> {
-    await this.emit("console.output", {
-      type: log.type,
-      content: log.content,
-      taskId: log.taskId,
-      time: log.time,
-    });
-  }
+  // Intentionally omit onUserConsoleLog. The review UI does not consume
+  // console records, and persisting high-volume application logs can dwarf
+  // the test lifecycle events that drive progress.
   async onTestModuleEnd(module: TestModule): Promise<void> {
     await this.emit("module.finished", {
       ...modulePayload(module),

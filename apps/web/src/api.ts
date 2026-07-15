@@ -6,7 +6,7 @@ import type {
   Page,
   ReviewNode,
   ReviewSession,
-  RunEvent,
+  RunProgress,
   SessionSummary,
   TestReview,
   TestSource,
@@ -87,16 +87,14 @@ export const api = {
     }),
 };
 
-export async function subscribeEvents(
+export async function subscribeProgress(
   id: string,
-  after: number,
-  onEvent: (event: RunEvent) => void,
+  onProgress: (progress: RunProgress) => void,
   signal: AbortSignal,
 ): Promise<void> {
-  const response = await fetch(`/api/v1/sessions/${id}/events`, {
+  const response = await fetch(`/api/v1/sessions/${id}/progress`, {
     headers: {
       authorization: `Bearer ${bearerToken}`,
-      "last-event-id": String(after),
     },
     signal,
   });
@@ -116,7 +114,7 @@ export async function subscribeEvents(
         .find((line) => line.startsWith("data:"))
         ?.slice(5)
         .trim();
-      if (data) onEvent(JSON.parse(data) as RunEvent);
+      if (data) onProgress(JSON.parse(data) as RunProgress);
     }
   }
 }

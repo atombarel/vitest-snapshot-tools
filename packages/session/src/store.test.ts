@@ -1,4 +1,11 @@
-import { mkdtemp, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdtemp,
+  readFile,
+  realpath,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -59,5 +66,71 @@ describe("SessionStore", () => {
     await expect(
       store.withSessionLock(session, async () => "released"),
     ).resolves.toBe("released");
+  });
+  it("tails only complete event records from the previous byte offset", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vsnap-repo-"));
+    const store = new SessionStore({
+      cacheRoot: await mkdtemp(join(tmpdir(), "vsnap-cache-")),
+    });
+    const session = await store.create(root);
+    await store.appendEvent(session, {
+      schemaVersion: 1,
+      sequence: 1,
+      sessionId: session.id,
+      type: "run.started",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      payload: {},
+    });
+
+    const first = await store.readEventChunk(session);
+    expect(first.events.map((event) => event.sequence)).toEqual([1]);
+
+    const secondRecord = JSON.stringify({
+      schemaVersion: 1,
+      sequence: 2,
+      sessionId: session.id,
+      type: "run.finished",
+      timestamp: "2026-01-01T00:00:01.000Z",
+      payload: {},
+    });
+    const split = Math.floor(secondRecord.length / 2);
+    const eventPath = join(store.sessionDirectory(session), "events.ndjson");
+    await appendFile(eventPath, secondRecord.slice(0, split));
+    const incomplete = await store.readEventChunk(session, first.offset);
+    expect(incomplete).toEqual({ events: [], offset: first.offset });
+
+    await appendFile(eventPath, `${secondRecord.slice(split)}\n`);
+    const second = await store.readEventChunk(session, incomplete.offset);
+    expect(second.events.map((event) => event.sequence)).toEqual([2]);
+    expect(second.offset).toBeGreaterThan(first.offset);
+  });
+  it("appends event batches as ordered NDJSON records", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vsnap-repo-"));
+    const store = new SessionStore({
+      cacheRoot: await mkdtemp(join(tmpdir(), "vsnap-cache-")),
+    });
+    const session = await store.create(root);
+    await store.appendEvents(session, [
+      {
+        schemaVersion: 1,
+        sequence: 1,
+        sessionId: session.id,
+        type: "run.started",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        payload: {},
+      },
+      {
+        schemaVersion: 1,
+        sequence: 2,
+        sessionId: session.id,
+        type: "run.finished",
+        timestamp: "2026-01-01T00:00:01.000Z",
+        payload: {},
+      },
+    ]);
+
+    expect(
+      (await store.readEvents(session)).map((event) => event.sequence),
+    ).toEqual([1, 2]);
   });
 });

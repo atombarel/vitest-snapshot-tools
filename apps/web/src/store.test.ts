@@ -1,58 +1,53 @@
-import type { RunEvent } from "@vsnap/protocol";
+import type { RunProgress } from "@vsnap/protocol";
 import { beforeEach, describe, expect, it } from "vitest";
-import { beginLiveSession, liveStore, reduceEvent } from "./store.js";
+import { createEmptyRunProgress } from "./run-progress.js";
+import { beginLiveSession, liveStore, reduceProgress } from "./store.js";
 
 const sessionA = "4d743cfe-85f1-419a-b437-799ca6ce7476";
 const sessionB = "15cc1dd3-b90d-4e30-9e8c-935492818b2d";
 
-function event(
+function progress(
   sequence: number,
-  type: RunEvent["type"],
-  payload: Record<string, unknown>,
-): RunEvent {
-  return {
-    schemaVersion: 1,
-    sequence,
-    sessionId: sessionA,
-    type,
-    timestamp: "2026-07-13T00:00:00.000Z",
-    payload,
-  };
+  values: Partial<RunProgress> = {},
+): RunProgress {
+  return { ...createEmptyRunProgress(sessionA), sequence, ...values };
 }
 
-describe("live event reduction", () => {
-  beforeEach(() =>
-    liveStore.setState(() => ({
-      sequence: 0,
-      events: [],
-      runningTests: {},
-      console: [],
-    })),
-  );
+describe("live progress reduction", () => {
+  beforeEach(() => liveStore.setState(() => ({ sequence: 0 })));
 
-  it("tracks running tests and bounded console history", () => {
-    reduceEvent(event(1, "test.started", { id: "test_1", name: "works" }));
-    expect(liveStore.state.runningTests).toEqual({ test_1: "works" });
-    reduceEvent(event(2, "console.output", { content: "hello" }));
-    reduceEvent(event(3, "test.finished", { id: "test_1" }));
-    expect(liveStore.state.sequence).toBe(3);
-    expect(liveStore.state.runningTests).toEqual({});
-    expect(liveStore.state.console).toHaveLength(1);
+  it("stores the latest backend progress snapshot", () => {
+    reduceProgress(
+      progress(10, {
+        testsDiscovered: 40,
+        testsFinished: 12,
+        snapshotChanges: 3,
+      }),
+    );
+    expect(liveStore.state.progress).toMatchObject({
+      sequence: 10,
+      testsDiscovered: 40,
+      testsFinished: 12,
+      snapshotChanges: 3,
+    });
   });
 
-  it("resets live history when navigating to another session", () => {
+  it("ignores stale and previous-session snapshots", () => {
     beginLiveSession(sessionA);
-    reduceEvent(event(1, "console.output", { content: "old output" }));
-    expect(beginLiveSession(sessionA)).toBe(1);
-    expect(beginLiveSession(sessionB)).toBe(0);
-    expect(liveStore.state.events).toEqual([]);
-    expect(liveStore.state.console).toEqual([]);
+    reduceProgress(progress(10, { testsFinished: 10 }));
+    reduceProgress(progress(9, { testsFinished: 9 }));
+    reduceProgress({
+      ...progress(11, { testsFinished: 11 }),
+      sessionId: sessionB,
+    });
+    expect(liveStore.state.progress?.testsFinished).toBe(10);
+    expect(liveStore.state.sequence).toBe(10);
   });
 
-  it("ignores a late event from a previous session", () => {
+  it("clears progress when navigating to another session", () => {
+    beginLiveSession(sessionA);
+    reduceProgress(progress(2, { testsFinished: 2 }));
     beginLiveSession(sessionB);
-    reduceEvent(event(1, "test.started", { id: "stale", name: "old test" }));
-    expect(liveStore.state.sequence).toBe(0);
-    expect(liveStore.state.runningTests).toEqual({});
+    expect(liveStore.state).toEqual({ sessionId: sessionB, sequence: 0 });
   });
 });

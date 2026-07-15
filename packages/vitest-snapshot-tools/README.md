@@ -13,7 +13,7 @@ CLI for automation.
 ## Quick start
 
 ```sh
-npx vitest-snapshot-tools -- --project unit
+npx vitest-snapshot-tools
 ```
 
 Requires Node.js 22.14 or newer and a project-local Vitest version in the
@@ -22,10 +22,10 @@ version when installed. To pin it for a project:
 
 ```sh
 npm install --save-dev vitest-snapshot-tools
-npx vitest-snapshot-tools -- --project unit
+npx vitest-snapshot-tools
 ```
 
-Everything after `--` is passed to Vitest.
+Optional arguments after `--` are passed to Vitest.
 
 ## Agent skill and token-efficient review
 

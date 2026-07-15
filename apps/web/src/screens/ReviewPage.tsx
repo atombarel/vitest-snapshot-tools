@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { api, subscribeEvents } from "../api.js";
+import { api, subscribeProgress } from "../api.js";
 import { RunProgress } from "../components/RunProgress.js";
 import { Badge } from "../components/ui/badge.js";
 import { Button } from "../components/ui/button.js";
@@ -37,7 +37,7 @@ import {
 } from "../components/ui/tooltip.js";
 import { inferSnapshotLanguage } from "../diff-language.js";
 import { matcherInvocation } from "../snapshot-context.js";
-import { beginLiveSession, liveStore, reduceEvent } from "../store.js";
+import { beginLiveSession, liveStore, reduceProgress } from "../store.js";
 import { nextThemeMode, parseThemeMode, resolveTheme } from "../theme.js";
 
 const SourceCodeView = lazy(() =>
@@ -105,9 +105,8 @@ export function ReviewPage() {
     enabled: Boolean(reviewEntryId),
   });
   const live = useStore(liveStore, (value) => value);
-  const liveEvents = live.sessionId === params.sessionId ? live.events : [];
-  const runningTests =
-    live.sessionId === params.sessionId ? live.runningTests : {};
+  const liveProgress =
+    live.sessionId === params.sessionId ? live.progress : undefined;
   // A rerun navigates to a new child session while keeping this component
   // mounted; clear selection/filters so nothing stale leaks across.
   const previousSessionId = useRef(params.sessionId);
@@ -120,11 +119,10 @@ export function ReviewPage() {
   }, [params.sessionId]);
   useEffect(() => {
     const controller = new AbortController();
-    const afterSequence = beginLiveSession(params.sessionId);
-    void subscribeEvents(
+    beginLiveSession(params.sessionId);
+    void subscribeProgress(
       params.sessionId,
-      afterSequence,
-      reduceEvent,
+      reduceProgress,
       controller.signal,
     ).catch(() => undefined);
     return () => controller.abort();
@@ -296,6 +294,8 @@ export function ReviewPage() {
   const active = ["created", "collecting", "running", "cancelling"].includes(
     session.data?.state ?? "",
   );
+  const runFailed =
+    session.data?.state === "failed" || (session.data?.summary.failed ?? 0) > 0;
   const totals = {
     pending: list.filter((n) => n.decision === "pending").length,
     accepted: list.filter((n) => n.decision === "accepted").length,
@@ -331,7 +331,7 @@ export function ReviewPage() {
               className="gap-1.5 capitalize"
             >
               <span
-                className={`size-1.5 rounded-full ${active ? "animate-pulse bg-info" : "bg-success"}`}
+                className={`size-1.5 rounded-full ${active ? "animate-pulse bg-info" : runFailed ? "bg-destructive" : "bg-success"}`}
               />
               {session.data?.state ?? "loading"}
             </Badge>
@@ -343,26 +343,28 @@ export function ReviewPage() {
           <div className="ml-auto flex items-center gap-4">
             <div className="hidden items-center gap-3.5 text-xs lg:flex">
               <span className="flex items-center gap-1.5 text-muted-foreground">
-                <span className="size-1.5 rounded-full bg-success" />
-                <b className="font-semibold text-foreground tabular-nums">
-                  {session.data?.summary.passed ?? 0}
-                </b>{" "}
-                passed
-              </span>
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <span className="size-1.5 rounded-full bg-destructive" />
-                <b className="font-semibold text-foreground tabular-nums">
-                  {session.data?.summary.failed ?? 0}
-                </b>{" "}
-                failed
-              </span>
-              <span className="flex items-center gap-1.5 text-muted-foreground">
                 <span className="size-1.5 rounded-full bg-info" />
                 <b className="font-semibold text-foreground tabular-nums">
                   {session.data?.summary.snapshotChanges ?? 0}
                 </b>{" "}
-                changes
+                snapshot updates
               </span>
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <span className="size-1.5 rounded-full bg-success" />
+                <b className="font-semibold text-foreground tabular-nums">
+                  {session.data?.summary.total ?? 0}
+                </b>{" "}
+                tests completed
+              </span>
+              {runFailed ? (
+                <span className="flex items-center gap-1.5 text-destructive">
+                  <span className="size-1.5 rounded-full bg-destructive" />
+                  <b className="font-semibold tabular-nums">
+                    {session.data?.summary.failed ?? 0}
+                  </b>{" "}
+                  test failures
+                </span>
+              ) : null}
             </div>
 
             <Separator orientation="vertical" className="!h-6" />
@@ -423,11 +425,7 @@ export function ReviewPage() {
         </header>
 
         {active && session.data ? (
-          <RunProgress
-            session={session.data}
-            events={liveEvents}
-            runningTests={runningTests}
-          />
+          <RunProgress session={session.data} progress={liveProgress} />
         ) : null}
 
         {/* Workspace */}

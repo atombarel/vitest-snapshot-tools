@@ -10,6 +10,7 @@ import type {
   StoredReviewEntry,
 } from "@vsnap/session";
 import { listOverlay } from "@vsnap/session";
+import { BufferedRunEventWriter } from "./event-writer.js";
 import { SnapshotReporter } from "./reporter.js";
 
 interface TargetVitestNode {
@@ -264,7 +265,7 @@ async function executeVitestCapture(
     new URL("./environment.js", import.meta.url).pathname;
   let sequence =
     (await options.store.readEvents(session)).at(-1)?.sequence ?? 0;
-  let pendingEventWrites = Promise.resolve();
+  const eventWriter = new BufferedRunEventWriter(options.store, session);
   const emit = (
     type: RunEvent["type"],
     payload: Record<string, unknown>,
@@ -277,9 +278,7 @@ async function executeVitestCapture(
       timestamp: new Date().toISOString(),
       payload,
     };
-    pendingEventWrites = pendingEventWrites.then(() =>
-      options.store.appendEvent(session, event),
-    );
+    eventWriter.append(event);
     options.onEvent?.(event);
     return Promise.resolve();
   };
@@ -319,7 +318,7 @@ async function executeVitestCapture(
     await options.store.save(session);
     const started = Date.now();
     await vitest.start(parsed.filter);
-    await pendingEventWrites;
+    await eventWriter.close();
     const index = await options.store.readIndex(session);
     const events = await options.store.readEvents(session);
     const finished = events.filter((event) => event.type === "test.finished");
