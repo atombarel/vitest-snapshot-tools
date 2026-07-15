@@ -120,6 +120,8 @@ export function ReviewPage() {
     ),
   );
   const sourceReviewEntryId = selectedSourceOccurrence?.entryId;
+  const nextSourceEntryId =
+    sourceOccurrences[sourceOccurrenceIndex + 1]?.entryId;
   const occurrenceReview = useQuery({
     queryKey: ["occurrence-review", params.sessionId, sourceReviewEntryId],
     queryFn: () => api.review(params.sessionId, sourceReviewEntryId as string),
@@ -133,6 +135,24 @@ export function ReviewPage() {
     activeNode?.kind === "family" && sourceReviewEntryId !== reviewEntryId
       ? occurrenceReview.data?.source
       : review.data?.source;
+  useEffect(() => {
+    if (
+      activeNode?.kind !== "family" ||
+      !nextSourceEntryId ||
+      nextSourceEntryId === reviewEntryId
+    )
+      return;
+    void queryClient.prefetchQuery({
+      queryKey: ["occurrence-review", params.sessionId, nextSourceEntryId],
+      queryFn: () => api.review(params.sessionId, nextSourceEntryId),
+    });
+  }, [
+    activeNode?.kind,
+    nextSourceEntryId,
+    params.sessionId,
+    queryClient,
+    reviewEntryId,
+  ]);
   const live = useStore(liveStore, (value) => value);
   const liveProgress =
     live.sessionId === params.sessionId ? live.progress : undefined;
@@ -848,6 +868,12 @@ export function ReviewPage() {
                         </span>
                       </div>
                     </div>
+                    {activeNode?.kind === "family" &&
+                    selectedSourceOccurrence?.test.name ? (
+                      <div className="source-occurrence-title border-b px-4 py-2.5 text-sm leading-snug font-medium break-words">
+                        {selectedSourceOccurrence.test.name}
+                      </div>
+                    ) : null}
                     <Suspense
                       fallback={
                         <div className="flex min-h-32 items-center justify-center gap-2 text-sm text-muted-foreground">

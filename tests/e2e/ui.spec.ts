@@ -22,6 +22,13 @@ test.beforeAll(async () => {
 test("shows the full innermost suite above both snapshot chunks", async ({
   page,
 }) => {
+  const requestedReviewEntries = new Set<string>();
+  page.on("request", (request) => {
+    const entryId = request
+      .url()
+      .match(/\/entries\/(entry_[^/]+)\/review(?:\?|$)/)?.[1];
+    if (entryId) requestedReviewEntries.add(entryId);
+  });
   await page.setViewportSize({ width: 1920, height: 900 });
   await page.emulateMedia({ colorScheme: "dark" });
   const reviewUrl = new URL(`/runs/${sessionId}/review`, server.url);
@@ -42,12 +49,21 @@ test("shows the full innermost suite above both snapshot chunks", async ({
   await expect(affectedTestSelector.locator("option:checked")).toContainText(
     "returns a customer",
   );
+  await expect(page.locator(".source-occurrence-title")).toHaveText(
+    "shared API contract > returns a customer",
+  );
+  await expect
+    .poll(() => requestedReviewEntries.size)
+    .toBeGreaterThanOrEqual(2);
   await expect(page.getByText("1/3", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Next affected test" }).click();
   await expect(affectedTestSelector.locator("option:checked")).toContainText(
     "returns a subscription",
   );
   await expect(page.getByText("2/3", { exact: true })).toBeVisible();
+  await expect(page.locator(".source-occurrence-title")).toHaveText(
+    "shared API contract > returns a subscription",
+  );
   await expect(page.locator("[data-test-start]")).toContainText(
     'it("returns a subscription"',
   );
@@ -57,14 +73,21 @@ test("shows the full innermost suite above both snapshot chunks", async ({
     const selector = document.querySelector<HTMLElement>(
       ".source-occurrence-selector",
     );
-    if (!preview || !selector)
+    const title = document.querySelector<HTMLElement>(
+      ".source-occurrence-title",
+    );
+    if (!preview || !selector || !title)
       throw new Error("Affected test source selector is missing");
     return {
       previewRight: preview.getBoundingClientRect().right,
       selectorRight: selector.getBoundingClientRect().right,
+      titleRight: title.getBoundingClientRect().right,
     };
   });
   expect(compactSelectorLayout.selectorRight).toBeLessThanOrEqual(
+    compactSelectorLayout.previewRight,
+  );
+  expect(compactSelectorLayout.titleRight).toBeLessThanOrEqual(
     compactSelectorLayout.previewRight,
   );
   await page.setViewportSize({ width: 1920, height: 900 });
