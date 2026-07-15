@@ -224,23 +224,49 @@ it("renders profile", () => {
     ]);
   });
 
-  it("falls back to the full file when historical metadata cannot locate a test", () => {
+  it("matches a known test title across nested describes", () => {
     const content = `/* eslint-disable no-console */
-it.each(cases)(generatedName, (value) => {
-  captureSnapshot(value);
+describe("snapshot in one", () => {
+  describe("authentications for authentication", () => {
+    it("should have called partners", () => captureSnapshot("wrong"));
+  });
+  describe("authentications for authorisation", () => {
+    it("should have called partners", () => {
+      captureSnapshot("target");
+    });
+  });
 });
 `;
     const located = locateTestSource(content, "src/account.test.ts", {
       snapshotFile: "src/__snapshots__/account.test.ts.snap",
       snapshotKind: "external",
-      snapshotKey: "resolved generated name 1",
+      snapshotKey:
+        "snapshot in one > authentications for authorisation > should have called partners 1",
       matcher: "toMatchSnapshot",
       changeType: "modified",
       ordinal: 1,
-      test: { name: "resolved generated name" },
+      test: {
+        name: "snapshot in one > authentications for authorisation > should have called partners",
+      },
     });
 
-    expect(located.blocks).toEqual([]);
-    expect(located.focus).toEqual({ startLine: 1, endLine: 4 });
+    expect(located.focus).toMatchObject({
+      testLine: 7,
+      startLine: 7,
+      endLine: 9,
+    });
+    expect(located.blocks.map((block) => block.kind)).toEqual([
+      "suite",
+      "suite",
+      "test",
+    ]);
+    expect(located.blocks[0]?.content).toContain('describe("snapshot in one"');
+    expect(located.blocks[1]?.content).toContain(
+      'describe("authentications for authorisation"',
+    );
+    expect(located.blocks[2]?.content).toContain('captureSnapshot("target")');
+    expect(
+      located.blocks.map((block) => block.content).join("\n"),
+    ).not.toContain('captureSnapshot("wrong")');
   });
 });

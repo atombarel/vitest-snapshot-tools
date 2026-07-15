@@ -74,4 +74,21 @@ describe("read-only source view", () => {
       expect(container.querySelector("[data-matcher-line]")).not.toBeNull(),
     );
   });
+
+  it("does not present unrelated fallback content as the test", () => {
+    const source: TestSource = {
+      entryId: "entry_unlocated",
+      relativePath: "src/value.test.ts",
+      language: "typescript",
+      content: "/* eslint-disable no-console */",
+      contentHash: "b".repeat(64),
+      blocks: [],
+      focus: { startLine: 1, endLine: 1 },
+    };
+
+    render(<SourceCodeView source={source} theme="dark" />);
+
+    expect(screen.getByText(/exact test source unavailable/i)).toBeDefined();
+    expect(screen.queryByText(/eslint-disable/)).toBeNull();
+  });
 });
