@@ -6,6 +6,52 @@ import { describe, expect, it } from "vitest";
 import { createSnapshotApplication } from "./application.js";
 
 describe("transactional integration", () => {
+  it("tails run events from an advancing byte offset", async () => {
+    const repositoryRoot = await mkdtemp(join(tmpdir(), "vsnap-events-repo-"));
+    const store = new SessionStore({
+      cacheRoot: await mkdtemp(join(tmpdir(), "vsnap-events-cache-")),
+    });
+    const offsets: number[] = [];
+    const readEventChunk = store.readEventChunk.bind(store);
+    store.readEventChunk = async (session, offset = 0) => {
+      offsets.push(offset);
+      return readEventChunk(session, offset);
+    };
+    const session = await store.create(repositoryRoot);
+    await store.appendEvent(session, {
+      schemaVersion: 1,
+      sequence: 1,
+      sessionId: session.id,
+      type: "run.started",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      payload: {},
+    });
+    await store.appendEvent(session, {
+      schemaVersion: 1,
+      sequence: 2,
+      sessionId: session.id,
+      type: "run.finished",
+      timestamp: "2026-01-01T00:00:01.000Z",
+      payload: {},
+    });
+    await store.save({
+      ...session,
+      state: "completed",
+      completedAt: "2026-01-01T00:00:01.000Z",
+    });
+    const app = createSnapshotApplication({ store });
+    const events = [];
+    for await (const event of app.subscribe(session.id)) events.push(event);
+    const progress = [];
+    for await (const update of app.subscribeProgress(session.id))
+      progress.push(update);
+
+    expect(events.map((event) => event.sequence)).toEqual([1, 2]);
+    expect(progress.at(-1)).toMatchObject({ sequence: 2, runEnded: true });
+    expect(offsets[0]).toBe(0);
+    expect(offsets.at(-1)).toBeGreaterThan(0);
+  });
+
   it("captures without repository writes and applies only after approval", async () => {
     const fixtureSource = resolve("../../tests/fixtures/basic-vitest");
     const fixtureParent = await mkdtemp(join(tmpdir(), "vsnap-fixture-"));

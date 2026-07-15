@@ -156,6 +156,30 @@ export const RunEventSchema = z.object({
 });
 export type RunEvent = z.infer<typeof RunEventSchema>;
 
+export const RunProgressTestSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  status: z.string().optional(),
+  durationMs: z.number().nonnegative().optional(),
+});
+export const RunProgressSchema = z.object({
+  schemaVersion: z.literal(1),
+  sessionId: z.string().uuid(),
+  sequence: z.number().int().nonnegative(),
+  modulesCollected: z.number().int().nonnegative(),
+  modulesFinished: z.number().int().nonnegative(),
+  testsDiscovered: z.number().int().nonnegative(),
+  testsFinished: z.number().int().nonnegative(),
+  passed: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  snapshotChanges: z.number().int().nonnegative(),
+  currentTests: z.array(RunProgressTestSchema),
+  recentTests: z.array(RunProgressTestSchema),
+  runEnded: z.boolean(),
+});
+export type RunProgress = z.infer<typeof RunProgressSchema>;
+
 export const ErrorEnvelopeSchema = z.object({
   schemaVersion: z.literal(1),
   ok: z.literal(false),
@@ -359,6 +383,7 @@ export interface SnapshotApplication {
     sessionId: string,
     options?: { afterSequence?: number },
   ): AsyncIterable<RunEvent>;
+  subscribeProgress(sessionId: string): AsyncIterable<RunProgress>;
 }
 
 export class VsnapError extends Error {

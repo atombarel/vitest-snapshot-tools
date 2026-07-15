@@ -28,6 +28,7 @@ import type {
   ReviewNode,
   ReviewSession,
   RunEvent,
+  RunProgress,
   SessionSummary,
   SetDecisionInput,
   SnapshotApplication,
@@ -49,6 +50,11 @@ import type {
 } from "@vsnap/session";
 import { readOverlay, SessionStore, writeOverlay } from "@vsnap/session";
 import { applyFilesystemPlan } from "./apply.js";
+import {
+  accumulateProgress,
+  createProgressAccumulator,
+  progressSnapshot,
+} from "./progress.js";
 import { locateTestSource } from "./source.js";
 
 export interface SnapshotApplicationOptions extends SessionStoreOptions {
@@ -980,8 +986,13 @@ export function createSnapshotApplication(
     ): AsyncIterable<RunEvent> {
       const session = await store.load(sessionId);
       let sequence = options?.afterSequence ?? 0;
+      let offset = 0;
       while (true) {
-        const events = await store.readEvents(session, sequence);
+        const chunk = await store.readEventChunk(session, offset);
+        offset = chunk.offset;
+        const events = chunk.events.filter(
+          (event) => event.sequence > sequence,
+        );
         for (const event of events) {
           sequence = event.sequence;
           yield event;
@@ -992,6 +1003,26 @@ export function createSnapshotApplication(
             current.state,
           ) &&
           events.length === 0
+        )
+          return;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    },
+    async *subscribeProgress(sessionId: string): AsyncIterable<RunProgress> {
+      const session = await store.load(sessionId);
+      const progress = createProgressAccumulator(sessionId);
+      let offset = 0;
+      while (true) {
+        const chunk = await store.readEventChunk(session, offset);
+        offset = chunk.offset;
+        for (const event of chunk.events) accumulateProgress(progress, event);
+        if (chunk.events.length > 0) yield progressSnapshot(progress);
+        const current = await store.load(sessionId);
+        if (
+          ["completed", "failed", "interrupted", "applied"].includes(
+            current.state,
+          ) &&
+          chunk.events.length === 0
         )
           return;
         await new Promise((resolve) => setTimeout(resolve, 100));

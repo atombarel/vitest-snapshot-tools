@@ -318,6 +318,42 @@ export class SessionStore {
       .filter((event) => event.sequence > afterSequence);
   }
 
+  async readEventChunk(
+    session: ReviewSession,
+    offset = 0,
+  ): Promise<{ events: RunEvent[]; offset: number }> {
+    const path = join(this.sessionDirectory(session), "events.ndjson");
+    const handle = await open(path, "r");
+    try {
+      const size = (await handle.stat()).size;
+      const start = offset <= size ? offset : 0;
+      if (start === size) return { events: [], offset: start };
+      const content = Buffer.allocUnsafe(size - start);
+      const { bytesRead } = await handle.read(
+        content,
+        0,
+        content.length,
+        start,
+      );
+      const bytes = content.subarray(0, bytesRead);
+      const lastNewline = bytes.lastIndexOf(0x0a);
+      // An append can be visible while its final NDJSON record is incomplete.
+      // Leave that record unread until the next poll instead of failing the
+      // live stream with a transient JSON parse error.
+      if (lastNewline < 0) return { events: [], offset: start };
+      const complete = bytes.subarray(0, lastNewline).toString("utf8");
+      return {
+        events: complete
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => RunEventSchema.parse(JSON.parse(line))),
+        offset: start + lastNewline + 1,
+      };
+    } finally {
+      await handle.close();
+    }
+  }
+
   async appendAudit(
     session: ReviewSession,
     action: string,

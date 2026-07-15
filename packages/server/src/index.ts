@@ -229,6 +229,18 @@ export async function createSnapshotServer(
         });
     }),
   );
+  app.get("/api/v1/sessions/:id/progress", (context) =>
+    streamSSE(context, async (stream) => {
+      for await (const progress of application.subscribeProgress(
+        context.req.param("id"),
+      ))
+        await stream.writeSSE({
+          id: String(progress.sequence),
+          event: "progress.updated",
+          data: JSON.stringify(progress),
+        });
+    }),
+  );
   app.post("/api/v1/runs", async (context) => {
     const body = z
       .object({ vitestArgs: z.array(z.string()).default([]) })

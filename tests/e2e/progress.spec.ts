@@ -39,7 +39,7 @@ test("explains live progress during a larger test run", async ({ page }) => {
   await expect(progress).toContainText(
     /discovered tests|report discovered tests/,
   );
-  await expect(progress).toContainText("snapshot change");
-  await expect(progress).toContainText("passed");
+  await expect(progress).toContainText("snapshot update");
+  await expect(progress).toContainText("tests completed");
   await expect(progress).toContainText("files");
 });

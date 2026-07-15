@@ -88,25 +88,22 @@ export function StartPage() {
                         <div className="truncate text-sm font-medium">
                           {session.summary.snapshotChanges} snapshot{" "}
                           {session.summary.snapshotChanges === 1
-                            ? "change"
-                            : "changes"}
+                            ? "update"
+                            : "updates"}
                         </div>
                         <div className="truncate font-mono text-xs text-muted-foreground">
                           {session.id.slice(0, 8)} · revision {session.revision}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Badge variant="success" className="tabular-nums">
-                          {session.summary.passed} passed
+                        <Badge variant="secondary" className="tabular-nums">
+                          {session.summary.total} tests
                         </Badge>
-                        <Badge
-                          variant={
-                            session.summary.failed ? "destructive" : "secondary"
-                          }
-                          className="tabular-nums"
-                        >
-                          {session.summary.failed} failed
-                        </Badge>
+                        {session.summary.failed ? (
+                          <Badge variant="destructive" className="tabular-nums">
+                            {session.summary.failed} failed
+                          </Badge>
+                        ) : null}
                         <span className="hidden w-16 text-xs text-muted-foreground capitalize sm:inline">
                           {session.state}
                         </span>
