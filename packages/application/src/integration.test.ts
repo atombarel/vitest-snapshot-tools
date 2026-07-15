@@ -107,6 +107,7 @@ describe("transactional integration", () => {
         name: "captures a value",
         file: "src/value.test.ts",
         status: "passed",
+        location: { line: 3 },
       },
     });
     const source = await app.getTestSource({

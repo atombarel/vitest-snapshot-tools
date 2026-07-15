@@ -194,9 +194,7 @@ function inferredTestLine(
   const exact = lines.findIndex(
     (line, index) => declarationLines.has(index + 1) && line.includes(leafName),
   );
-  if (exact >= 0) return exact + 1;
-  const fallback = lines.findIndex((line) => line.includes(leafName));
-  return fallback >= 0 ? fallback + 1 : undefined;
+  return exact >= 0 ? exact + 1 : undefined;
 }
 
 interface MatcherOccurrence {
@@ -460,7 +458,9 @@ export function locateTestSource(
     lineCount,
     test
       ? lineAt(content, callEndOffset(content, test.open) ?? test.offset)
-      : anchor,
+      : testLine || matcher
+        ? anchor
+        : lineCount,
   );
   return {
     language: sourceLanguage(relativePath),

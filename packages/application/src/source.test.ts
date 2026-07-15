@@ -223,4 +223,24 @@ it("renders profile", () => {
       },
     ]);
   });
+
+  it("falls back to the full file when historical metadata cannot locate a test", () => {
+    const content = `/* eslint-disable no-console */
+it.each(cases)(generatedName, (value) => {
+  captureSnapshot(value);
+});
+`;
+    const located = locateTestSource(content, "src/account.test.ts", {
+      snapshotFile: "src/__snapshots__/account.test.ts.snap",
+      snapshotKind: "external",
+      snapshotKey: "resolved generated name 1",
+      matcher: "toMatchSnapshot",
+      changeType: "modified",
+      ordinal: 1,
+      test: { name: "resolved generated name" },
+    });
+
+    expect(located.blocks).toEqual([]);
+    expect(located.focus).toEqual({ startLine: 1, endLine: 4 });
+  });
 });

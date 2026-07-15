@@ -298,6 +298,7 @@ async function executeVitestCapture(
       root: session.repositoryRoot,
       watch: false,
       update: "all",
+      includeTaskLocation: true,
       reporters: [reporter],
       snapshotEnvironment: environmentPath,
     });
