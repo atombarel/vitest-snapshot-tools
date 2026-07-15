@@ -146,6 +146,32 @@ function callEndOffset(content: string, open: number): number | undefined {
   return undefined;
 }
 
+function callChainEndOffset(content: string, open: number): number | undefined {
+  let end = callEndOffset(content, open);
+  if (end === undefined) return undefined;
+  while (end < content.length) {
+    let next = end + 1;
+    while (/\s/.test(content[next] ?? "")) next += 1;
+    if (content[next] !== "(") return end;
+    const chainedEnd = callEndOffset(content, next);
+    if (chainedEnd === undefined) return end;
+    end = chainedEnd;
+  }
+  return end;
+}
+
+function nextCodeCharacter(
+  content: string,
+  code: Uint8Array,
+  offset: number,
+  character: string,
+): number {
+  for (let index = offset; index < content.length; index += 1) {
+    if (code[index] === 1 && content[index] === character) return index;
+  }
+  return -1;
+}
+
 function occurrences(
   content: string,
   expression: RegExp,
@@ -158,7 +184,7 @@ function occurrences(
       return {
         offset,
         line: lineAt(content, offset),
-        open: content.indexOf("(", offset),
+        open: nextCodeCharacter(content, code, offset, "("),
       };
     })
     .filter((item) => item.open >= 0);
@@ -167,7 +193,15 @@ function occurrences(
 function testOccurrences(content: string, code: Uint8Array): CallOccurrence[] {
   return occurrences(
     content,
-    /\b(?:it|test)(?:\.(?:only|skip|todo|fails|concurrent|each))?\s*\(/g,
+    /(?<![.$\w])(?:it|test)(?:\.(?:only|skip|todo|fails|concurrent|sequential|each))*\s*(?=[(`])/g,
+    code,
+  );
+}
+
+function suiteOccurrences(content: string, code: Uint8Array): CallOccurrence[] {
+  return occurrences(
+    content,
+    /(?<![.$\w])describe(?:\.(?:only|skip|todo|concurrent|sequential|shuffle|each))*\s*(?=[(`])/g,
     code,
   );
 }
@@ -200,6 +234,22 @@ function staticCallTitle(content: string, open: number): string | undefined {
   return undefined;
 }
 
+function occurrenceTitle(
+  content: string,
+  occurrence: CallOccurrence,
+): string | undefined {
+  const prefix = content.slice(occurrence.offset, occurrence.open);
+  if (!prefix.includes(".each"))
+    return staticCallTitle(content, occurrence.open);
+  const tableEnd = callEndOffset(content, occurrence.open);
+  if (tableEnd === undefined) return undefined;
+  let titleOpen = tableEnd + 1;
+  while (/\s/.test(content[titleOpen] ?? "")) titleOpen += 1;
+  return content[titleOpen] === "("
+    ? staticCallTitle(content, titleOpen)
+    : staticCallTitle(content, occurrence.open);
+}
+
 function expectedTestName(context: SourceContext): string | undefined {
   const withoutOrdinal = context.snapshotKey.replace(/ \d+$/, "");
   let name = context.test?.name ?? withoutOrdinal;
@@ -213,16 +263,12 @@ function sourceTestPath(
   test: CallOccurrence,
   structure: ReturnType<typeof scanSourceStructure>,
 ): string | undefined {
-  const testTitle = staticCallTitle(content, test.open);
+  const testTitle = occurrenceTitle(content, test);
   if (!testTitle) return undefined;
   const testScope = scopeAt(structure.braces, test.offset);
-  const suites = occurrences(
-    content,
-    /\bdescribe(?:\.(?:only|skip|todo|each))?\s*\(/g,
-    structure.code,
-  )
+  const suites = suiteOccurrences(content, structure.code)
     .filter((suite) => {
-      const end = callEndOffset(content, suite.open);
+      const end = callChainEndOffset(content, suite.open);
       return (
         end !== undefined &&
         structure.braces.some(
@@ -234,7 +280,7 @@ function sourceTestPath(
       );
     })
     .sort((left, right) => left.offset - right.offset)
-    .map((suite) => staticCallTitle(content, suite.open))
+    .map((suite) => occurrenceTitle(content, suite))
     .filter((title): title is string => Boolean(title));
   return [...suites, testTitle].join(" > ");
 }
@@ -262,6 +308,7 @@ function inferredTest(
 }
 
 interface MatcherOccurrence {
+  offset: number;
   line: number;
   column: number;
   preview: string;
@@ -316,6 +363,7 @@ function matcherOccurrences(
       const offset = match.index ?? 0;
       const lineStart = content.lastIndexOf("\n", offset) + 1;
       return {
+        offset,
         line: lineAt(content, offset),
         column: offset - lineStart + 1,
         preview: matcherPreview(content, offset),
@@ -323,24 +371,82 @@ function matcherOccurrences(
     });
 }
 
+function occurrenceColumn(content: string, occurrence: CallOccurrence): number {
+  return occurrence.offset - content.lastIndexOf("\n", occurrence.offset);
+}
+
+function runtimeSuiteOccurrences(
+  content: string,
+  context: SourceContext,
+  suites: CallOccurrence[],
+): CallOccurrence[] {
+  const reported = context.test?.suites ?? [];
+  const selected = reported.flatMap((suite) => {
+    const location = suite.location;
+    if (!location) return [];
+    const containingLine = suites.filter((candidate) => {
+      const end = callChainEndOffset(content, candidate.open);
+      return (
+        candidate.line <= location.line &&
+        end !== undefined &&
+        lineAt(content, end) >= location.line
+      );
+    });
+    const match = containingLine.sort(
+      (left, right) =>
+        right.line - left.line ||
+        Math.abs(occurrenceColumn(content, left) - location.column) -
+          Math.abs(occurrenceColumn(content, right) - location.column),
+    )[0];
+    return match ? [match] : [];
+  });
+  return selected.filter(
+    (suite, index) =>
+      selected.findIndex((candidate) => candidate.offset === suite.offset) ===
+      index,
+  );
+}
+
 function chooseMatcher(
   content: string,
   context: SourceContext,
-  testLine: number | undefined,
+  test: CallOccurrence | undefined,
+  runtimeSuites: CallOccurrence[],
   code: Uint8Array,
 ): MatcherOccurrence | undefined {
-  const occurrences = matcherOccurrences(content, context.matcher, code);
-  if (occurrences.length === 0) return undefined;
+  const allOccurrences = matcherOccurrences(content, context.matcher, code);
+  if (allOccurrences.length === 0) return undefined;
+  let occurrences = allOccurrences;
+  for (const suite of runtimeSuites) {
+    const end = callChainEndOffset(content, suite.open);
+    if (end === undefined) continue;
+    const scoped = occurrences.filter(
+      (item) => item.offset > suite.offset && item.offset < end,
+    );
+    if (scoped.length > 0) occurrences = scoped;
+  }
+  const testLine = test?.line;
   const declarations = testDeclarationLines(content);
   const nextTestLine = testLine
     ? declarations.find((line) => line > testLine)
     : undefined;
-  const scoped = testLine
-    ? occurrences.filter(
-        (item) =>
-          item.line >= testLine && (!nextTestLine || item.line < nextTestLine),
-      )
-    : occurrences;
+  const testEnd = test ? callChainEndOffset(content, test.open) : undefined;
+  const insideTest =
+    test && testEnd !== undefined
+      ? occurrences.filter(
+          (item) => item.offset > test.offset && item.offset < testEnd,
+        )
+      : [];
+  const scoped =
+    insideTest.length > 0
+      ? insideTest
+      : testLine
+        ? occurrences.filter(
+            (item) =>
+              item.line >= testLine &&
+              (!nextTestLine || item.line < nextTestLine),
+          )
+        : occurrences;
   const candidates = scoped.length > 0 ? scoped : occurrences;
   const snapshotName = context.snapshotName;
   if (snapshotName) {
@@ -361,6 +467,44 @@ function chooseMatcher(
   if (context.ordinal && candidates[context.ordinal - 1])
     return candidates[context.ordinal - 1];
   return candidates[0];
+}
+
+function registrationContainingMatcher(
+  content: string,
+  matcher: MatcherOccurrence,
+  context: SourceContext,
+  structure: ReturnType<typeof scanSourceStructure>,
+): CallOccurrence | undefined {
+  const calls = occurrences(
+    content,
+    /(?<![.$\w])[$A-Z_a-z][$\w]*(?:\s*\.\s*[$A-Z_a-z][$\w]*)*\s*(?=\()/g,
+    structure.code,
+  ).filter((call) => {
+    const name = content.slice(call.offset, call.open);
+    if (/\b(?:describe|beforeAll|beforeEach|afterEach|afterAll)\b/.test(name))
+      return false;
+    const end = callChainEndOffset(content, call.open);
+    if (
+      end === undefined ||
+      matcher.offset <= call.open ||
+      matcher.offset >= end
+    )
+      return false;
+    return structure.braces.some(
+      (brace) =>
+        brace.start > call.open &&
+        brace.start < matcher.offset &&
+        brace.end > matcher.offset &&
+        brace.end < end,
+    );
+  });
+  if (calls.length === 0) return undefined;
+  const leafName = expectedTestName(context)?.split(" > ").at(-1);
+  const titled = leafName
+    ? calls.find((call) => occurrenceTitle(content, call) === leafName)
+    : undefined;
+  if (titled) return titled;
+  return calls.sort((left, right) => left.offset - right.offset)[0];
 }
 
 function blockFromLines(
@@ -398,18 +542,15 @@ function linkedSourceBlocks(
   content: string,
   test: CallOccurrence | undefined,
   structure: ReturnType<typeof scanSourceStructure>,
+  runtimeSuites: CallOccurrence[],
 ): TestSourceBlock[] {
   if (!test) return [];
-  const testEnd = callEndOffset(content, test.open);
+  const testEnd = callChainEndOffset(content, test.open);
   if (testEnd === undefined) return [];
   const testScope = scopeAt(structure.braces, test.offset);
-  const suites = occurrences(
-    content,
-    /\bdescribe(?:\.(?:only|skip|todo|each))?\s*\(/g,
-    structure.code,
-  )
+  const lexicalSuites = suiteOccurrences(content, structure.code)
     .flatMap((suite) => {
-      const end = callEndOffset(content, suite.open);
+      const end = callChainEndOffset(content, suite.open);
       if (end === undefined) return [];
       const body = structure.braces
         .filter(
@@ -434,6 +575,28 @@ function linkedSourceBlocks(
     })
     .sort((left, right) => left.offset - right.offset)
     .map((suite) => suite.block);
+  const reportedSuites = runtimeSuites.flatMap((suite) => {
+    const end = callChainEndOffset(content, suite.open);
+    if (end === undefined) return [];
+    const body = structure.braces
+      .filter(
+        (brace) =>
+          brace.start > suite.open &&
+          brace.start < test.offset &&
+          brace.end > test.offset &&
+          brace.end < end,
+      )
+      .sort((left, right) => left.start - right.start)[0];
+    return [
+      blockFromLines(
+        content,
+        "suite",
+        suite.line,
+        lineAt(content, body?.start ?? end),
+      ),
+    ];
+  });
+  const suites = reportedSuites.length > 0 ? reportedSuites : lexicalSuites;
   const hooks = [
     ...content.matchAll(/\b(beforeAll|beforeEach|afterEach|afterAll)\s*\(/g),
   ].flatMap((match) => {
@@ -495,16 +658,41 @@ export function locateTestSource(
   const lineCount = content.endsWith("\n") ? lines.length - 1 : lines.length;
   const structure = scanSourceStructure(content);
   const tests = testOccurrences(content, structure.code);
+  const suites = suiteOccurrences(content, structure.code);
+  const runtimeSuites = runtimeSuiteOccurrences(content, context, suites);
   let test = inferredTest(content, context, tests, structure);
   let testLine = test?.line;
-  const matcher = chooseMatcher(content, context, testLine, structure.code);
+  const matcher = chooseMatcher(
+    content,
+    context,
+    test,
+    runtimeSuites,
+    structure.code,
+  );
+  if (matcher) {
+    const testEnd = test ? callChainEndOffset(content, test.open) : undefined;
+    if (
+      !test ||
+      testEnd === undefined ||
+      matcher.offset < test.offset ||
+      matcher.offset > testEnd
+    ) {
+      test = registrationContainingMatcher(
+        content,
+        matcher,
+        context,
+        structure,
+      );
+      if (test) testLine = test.line;
+    }
+  }
   // Historical sessions may have a file association but no test name or
   // location. In that case, use the matcher to find the enclosing test.
   if (!test && matcher) {
     test = tests
       .map((occurrence) => ({
         occurrence,
-        end: callEndOffset(content, occurrence.open),
+        end: callChainEndOffset(content, occurrence.open),
       }))
       .filter(
         (candidate) =>
@@ -519,12 +707,12 @@ export function locateTestSource(
   const endLine = Math.min(
     lineCount,
     test
-      ? lineAt(content, callEndOffset(content, test.open) ?? test.offset)
+      ? lineAt(content, callChainEndOffset(content, test.open) ?? test.offset)
       : anchor,
   );
   return {
     language: sourceLanguage(relativePath),
-    blocks: linkedSourceBlocks(content, test, structure),
+    blocks: linkedSourceBlocks(content, test, structure, runtimeSuites),
     focus: {
       ...(testLine ? { testLine } : {}),
       ...(matcher

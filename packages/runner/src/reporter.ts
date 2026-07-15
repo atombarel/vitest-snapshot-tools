@@ -6,6 +6,20 @@ export type EventSink = (
   payload: Record<string, unknown>,
 ) => void | Promise<void>;
 
+function suitePath(test: TestCase): Array<Record<string, unknown>> {
+  const suites: Array<Record<string, unknown>> = [];
+  let parent = test.parent;
+  while (parent.type === "suite") {
+    suites.unshift({
+      id: parent.id,
+      name: parent.name,
+      location: parent.location,
+    });
+    parent = parent.parent;
+  }
+  return suites;
+}
+
 function modulePayload(module: TestModule): Record<string, unknown> {
   return {
     id: module.id,
@@ -41,6 +55,7 @@ export class SnapshotReporter implements Reporter {
       file: test.module.relativeModuleId,
       name: test.fullName,
       location: test.location,
+      suites: suitePath(test),
     });
   }
   async onTestCaseResult(test: TestCase): Promise<void> {
@@ -52,6 +67,7 @@ export class SnapshotReporter implements Reporter {
       file: test.module.relativeModuleId,
       name: test.fullName,
       location: test.location,
+      suites: suitePath(test),
       status: result.state,
       durationMs: diagnostic?.duration ?? 0,
       failures: result.errors ?? [],
@@ -63,6 +79,7 @@ export class SnapshotReporter implements Reporter {
       moduleId: suite.module.id,
       name: suite.name,
       parentId: suite.parent.id,
+      location: suite.location,
     });
   }
   async onTestSuiteResult(suite: TestSuite): Promise<void> {
@@ -71,6 +88,7 @@ export class SnapshotReporter implements Reporter {
       moduleId: suite.module.id,
       name: suite.name,
       parentId: suite.parent.id,
+      location: suite.location,
       state: suite.state(),
       errors: suite.errors(),
     });

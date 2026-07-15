@@ -285,6 +285,11 @@ export interface EntryDiff {
       status?: string;
       durationMs?: number;
       location?: { line: number; column: number };
+      suites?: Array<{
+        id: string;
+        name: string;
+        location?: { line: number; column: number };
+      }>;
       failureCount?: number;
     };
   };

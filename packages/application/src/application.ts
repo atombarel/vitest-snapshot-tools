@@ -597,6 +597,34 @@ export function createSnapshotApplication(
         typeof location.column === "number"
           ? { line: location.line, column: location.column }
           : undefined;
+      const testSuites = Array.isArray(testEvent?.payload.suites)
+        ? testEvent.payload.suites.flatMap((value) => {
+            if (!value || typeof value !== "object") return [];
+            const id = "id" in value ? value.id : undefined;
+            const name = "name" in value ? value.name : undefined;
+            if (typeof id !== "string" || typeof name !== "string") return [];
+            const suiteLocation =
+              "location" in value &&
+              value.location &&
+              typeof value.location === "object" &&
+              "line" in value.location &&
+              "column" in value.location &&
+              typeof value.location.line === "number" &&
+              typeof value.location.column === "number"
+                ? {
+                    line: value.location.line,
+                    column: value.location.column,
+                  }
+                : undefined;
+            return [
+              {
+                id,
+                name,
+                ...(suiteLocation ? { location: suiteLocation } : {}),
+              },
+            ];
+          })
+        : undefined;
       const diff = await entryDiff(session, entry);
       const hasTestContext = Boolean(
         file.testId || file.testFile || testName || entry.testName,
@@ -636,6 +664,7 @@ export function createSnapshotApplication(
                     ? { durationMs: testEvent.payload.durationMs }
                     : {}),
                   ...(testLocation ? { location: testLocation } : {}),
+                  ...(testSuites?.length ? { suites: testSuites } : {}),
                   ...(Array.isArray(testEvent?.payload.failures)
                     ? { failureCount: testEvent.payload.failures.length }
                     : {}),

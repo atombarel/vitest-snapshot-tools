@@ -240,4 +240,59 @@ describe("transactional integration", () => {
       (await app.createPreview({ sessionId: inlineSession.id })).operations,
     ).toHaveLength(0);
   }, 30_000);
+
+  it("locates helper-generated tests inside nested describe.each suites", async () => {
+    const fixtureSource = resolve("../../tests/fixtures/complex-vitest");
+    const fixtureParent = await mkdtemp(join(tmpdir(), "vsnap-complex-repo-"));
+    const fixture = join(fixtureParent, "project");
+    await cp(fixtureSource, fixture, { recursive: true });
+    await symlink(
+      resolve("../../node_modules"),
+      join(fixture, "node_modules"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const store = new SessionStore({
+      cacheRoot: await mkdtemp(join(tmpdir(), "vsnap-complex-cache-")),
+    });
+    const app = createSnapshotApplication({
+      store,
+      environmentPath: resolve("../runner/dist/environment.js"),
+    });
+
+    const session = await app.startRun({ repositoryRoot: fixture });
+    const index = await store.readIndex(session);
+    const entry = index.entries.find((candidate) =>
+      candidate.key.includes("authorisation"),
+    );
+    if (!entry) throw new Error("Expected the authorisation snapshot entry");
+    const diff = await app.getDiff({
+      sessionId: session.id,
+      entryId: entry.id,
+    });
+    expect(diff.context.test).toMatchObject({
+      name: "authentications for 'authorisation' > snapshot in one > should have called partners",
+      suites: [
+        { name: "authentications for 'authorisation'" },
+        { name: "snapshot in one" },
+      ],
+    });
+
+    const source = await app.getTestSource({
+      sessionId: session.id,
+      entryId: entry.id,
+    });
+    expect(source.blocks.map((block) => block.kind)).toEqual([
+      "suite",
+      "suite",
+      "test",
+    ]);
+    expect(source.blocks[0]?.content).toContain("describe.each");
+    expect(source.blocks[1]?.content).toContain('describe("snapshot in one"');
+    expect(source.blocks[2]?.content).toContain(
+      'logsRequest("should have called partners"',
+    );
+    expect(
+      source.blocks.map((block) => block.content).join("\n"),
+    ).not.toContain("const logsRequest");
+  }, 30_000);
 });

@@ -269,4 +269,64 @@ describe("snapshot in one", () => {
       located.blocks.map((block) => block.content).join("\n"),
     ).not.toContain('captureSnapshot("wrong")');
   });
+
+  it("uses runtime suite locations for describe.each tests registered by a helper", () => {
+    const content = `const logsRequest = (title, run) => it(title, run);
+
+describe.each([
+  { kind: "authentication" },
+  { kind: "authorisation" },
+])("authentications for $kind", ({ kind }) => {
+  describe("snapshot in one", () => {
+    logsRequest("should have called partners", () => {
+      expect({ kind }).toMatchSnapshot();
+    });
+  });
+});
+`;
+    const located = locateTestSource(content, "src/account.test.ts", {
+      snapshotFile: "src/__snapshots__/account.test.ts.snap",
+      snapshotKind: "external",
+      snapshotKey:
+        "authentications for authorisation > snapshot in one > should have called partners 1",
+      matcher: "toMatchSnapshot",
+      changeType: "modified",
+      ordinal: 1,
+      test: {
+        name: "authentications for authorisation > snapshot in one > should have called partners",
+        location: { line: 1, column: 37 },
+        suites: [
+          {
+            id: "suite_each",
+            name: "authentications for authorisation",
+            location: { line: 3, column: 1 },
+          },
+          {
+            id: "suite_nested",
+            name: "snapshot in one",
+            location: { line: 7, column: 3 },
+          },
+        ],
+      },
+    });
+
+    expect(located.focus).toMatchObject({
+      testLine: 8,
+      matcherLine: 9,
+      startLine: 8,
+      endLine: 10,
+    });
+    expect(located.blocks.map((block) => block.kind)).toEqual([
+      "suite",
+      "suite",
+      "test",
+    ]);
+    expect(located.blocks[0]?.content).toContain("describe.each");
+    expect(located.blocks[0]?.content).toContain('"authentications for $kind"');
+    expect(located.blocks[1]?.content).toContain('describe("snapshot in one"');
+    expect(located.blocks[2]?.content).toContain(
+      'logsRequest("should have called partners"',
+    );
+    expect(located.blocks[2]?.content).not.toContain("const logsRequest");
+  });
 });
