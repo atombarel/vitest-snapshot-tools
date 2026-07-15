@@ -245,25 +245,29 @@ function matcherPreview(content: string, offset: number): string {
 function matcherOccurrences(
   content: string,
   matcher: SourceContext["matcher"],
+  code: Uint8Array,
 ): MatcherOccurrence[] {
   const expression = new RegExp(`\\.\\s*${matcher}\\s*\\(`, "g");
-  return [...content.matchAll(expression)].map((match) => {
-    const offset = match.index ?? 0;
-    const lineStart = content.lastIndexOf("\n", offset) + 1;
-    return {
-      line: lineAt(content, offset),
-      column: offset - lineStart + 1,
-      preview: matcherPreview(content, offset),
-    };
-  });
+  return [...content.matchAll(expression)]
+    .filter((match) => code[match.index ?? 0] === 1)
+    .map((match) => {
+      const offset = match.index ?? 0;
+      const lineStart = content.lastIndexOf("\n", offset) + 1;
+      return {
+        line: lineAt(content, offset),
+        column: offset - lineStart + 1,
+        preview: matcherPreview(content, offset),
+      };
+    });
 }
 
 function chooseMatcher(
   content: string,
   context: SourceContext,
   testLine: number | undefined,
+  code: Uint8Array,
 ): MatcherOccurrence | undefined {
-  const occurrences = matcherOccurrences(content, context.matcher);
+  const occurrences = matcherOccurrences(content, context.matcher, code);
   if (occurrences.length === 0) return undefined;
   const declarations = testDeclarationLines(content);
   const nextTestLine = testLine
@@ -429,7 +433,7 @@ export function locateTestSource(
   const lineCount = content.endsWith("\n") ? lines.length - 1 : lines.length;
   const structure = scanSourceStructure(content);
   let testLine = inferredTestLine(content, context);
-  const matcher = chooseMatcher(content, context, testLine);
+  const matcher = chooseMatcher(content, context, testLine, structure.code);
   const tests = testOccurrences(content, structure.code);
   let test = testLine
     ? tests.find((occurrence) => occurrence.line === testLine)

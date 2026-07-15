@@ -22,7 +22,7 @@ test.beforeAll(async () => {
 test("shows one exact test block above both of its snapshot chunks", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.setViewportSize({ width: 1920, height: 900 });
   await page.emulateMedia({ colorScheme: "dark" });
   const reviewUrl = new URL(`/runs/${sessionId}/review`, server.url);
   reviewUrl.hash = new URL(server.url).hash;
@@ -128,7 +128,7 @@ test("shows one exact test block above both of its snapshot chunks", async ({
     workspaceOverflow: "hidden",
   });
   expect(scrollLayout.scrollTop).toBeGreaterThan(0);
-  expect(scrollLayout.contentWidth).toBeGreaterThan(1_100);
+  expect(scrollLayout.contentWidth).toBeGreaterThan(1_500);
   expect(scrollLayout.sourceWidth).toBe(scrollLayout.contentWidth);
   expect(scrollLayout.chunkWidth).toBe(scrollLayout.contentWidth);
   expect(scrollLayout.documentHeight).toBeLessThanOrEqual(

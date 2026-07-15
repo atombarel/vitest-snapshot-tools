@@ -671,7 +671,7 @@ export function ReviewPage() {
             {/* Scrollable review content */}
             <div className="diff-scroll min-h-0 flex-1 overflow-auto bg-muted/20 p-4">
               {review.data ? (
-                <div className="review-content mx-auto flex w-full max-w-7xl flex-col gap-4">
+                <div className="review-content flex w-full flex-col gap-4">
                   {activeNode?.kind === "family" ? (
                     <section className="family-summary flex items-center justify-between gap-4 rounded-lg border bg-card p-4">
                       <div className="min-w-0">

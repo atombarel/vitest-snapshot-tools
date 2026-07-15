@@ -190,4 +190,37 @@ describe("api", () => {
     });
     expect(located.blocks[0]?.content).toContain('it("renders profile"');
   });
+
+  it("ignores matcher examples in comments when recovering source", () => {
+    const content = `// Example: expect(profile).toMatchSnapshot("profile");
+it("renders profile", () => {
+  expect({ id: 1 }).toMatchSnapshot("profile");
+});
+`;
+    const located = locateTestSource(content, "src/account.test.ts", {
+      snapshotFile: "src/__snapshots__/account.test.ts.snap",
+      snapshotKind: "external",
+      snapshotKey: "renders profile > profile 1",
+      matcher: "toMatchSnapshot",
+      snapshotName: "profile",
+      changeType: "modified",
+      ordinal: 1,
+    });
+
+    expect(located.focus).toMatchObject({
+      testLine: 2,
+      matcherLine: 3,
+      startLine: 2,
+      endLine: 4,
+    });
+    expect(located.blocks).toEqual([
+      {
+        kind: "test",
+        content:
+          'it("renders profile", () => {\n  expect({ id: 1 }).toMatchSnapshot("profile");\n});',
+        startLine: 2,
+        endLine: 4,
+      },
+    ]);
+  });
 });
