@@ -295,5 +295,26 @@ describe("transactional integration", () => {
     expect(
       source.blocks.map((block) => block.content).join("\n"),
     ).not.toContain("const logsRequest");
+    const review = await app.getTestReview({
+      sessionId: session.id,
+      entryId: entry.id,
+    });
+    expect(review.occurrences).toHaveLength(2);
+    expect(
+      review.occurrences.map((occurrence) => occurrence.test.name),
+    ).toEqual([
+      "authentications for 'authorisation' > snapshot in one > should have called partners",
+      "authentications for 'authentication' > snapshot in one > should have called partners",
+    ]);
+    expect(
+      review.occurrences.map((occurrence) => occurrence.snapshotCount),
+    ).toEqual([1, 1]);
+    const otherOccurrence = review.occurrences[1];
+    if (!otherOccurrence) throw new Error("Expected another affected test");
+    const otherSource = await app.getTestSource({
+      sessionId: session.id,
+      entryId: otherOccurrence.entryId,
+    });
+    expect(otherSource.blocks[0]?.content).toContain("describe.each");
   }, 30_000);
 });

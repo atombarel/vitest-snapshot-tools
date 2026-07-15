@@ -34,6 +34,40 @@ test("shows the full innermost suite above both snapshot chunks", async ({
   await page.locator(".tree-row").first().click();
   await expect(page.getByText("EXACT CHANGE FAMILY")).toBeVisible();
   await expect(page.locator(".family-summary")).toContainText("occurrences");
+  const affectedTestSelector = page.getByRole("combobox", {
+    name: "Affected test source",
+  });
+  await expect(affectedTestSelector).toBeVisible();
+  await expect(affectedTestSelector.locator("option")).toHaveCount(3);
+  await expect(affectedTestSelector.locator("option:checked")).toContainText(
+    "returns a customer",
+  );
+  await expect(page.getByText("1/3", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Next affected test" }).click();
+  await expect(affectedTestSelector.locator("option:checked")).toContainText(
+    "returns a subscription",
+  );
+  await expect(page.getByText("2/3", { exact: true })).toBeVisible();
+  await expect(page.locator("[data-test-start]")).toContainText(
+    'it("returns a subscription"',
+  );
+  await page.setViewportSize({ width: 900, height: 900 });
+  const compactSelectorLayout = await page.evaluate(() => {
+    const preview = document.querySelector<HTMLElement>(".source-preview");
+    const selector = document.querySelector<HTMLElement>(
+      ".source-occurrence-selector",
+    );
+    if (!preview || !selector)
+      throw new Error("Affected test source selector is missing");
+    return {
+      previewRight: preview.getBoundingClientRect().right,
+      selectorRight: selector.getBoundingClientRect().right,
+    };
+  });
+  expect(compactSelectorLayout.selectorRight).toBeLessThanOrEqual(
+    compactSelectorLayout.previewRight,
+  );
+  await page.setViewportSize({ width: 1920, height: 900 });
   await page.getByText("Tests", { exact: true }).click();
   await page
     .getByRole("button", {

@@ -256,11 +256,19 @@ export interface TestSource {
     endLine: number;
   };
 }
+export interface TestReviewOccurrence {
+  /** One affected snapshot entry that can be used to load this test's source. */
+  entryId: string;
+  test: NonNullable<EntryDiff["context"]["test"]>;
+  snapshotCount: number;
+}
 export interface TestReview {
   sessionId: string;
   test?: EntryDiff["context"]["test"];
   source: TestSource;
   entries: EntryDiff[];
+  /** Distinct affected tests in the selected entry's exact change family. */
+  occurrences: TestReviewOccurrence[];
 }
 export interface EntryDiff {
   entryId: string;

@@ -6,6 +6,8 @@ import { useStore } from "@tanstack/react-store";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Check,
+  ChevronLeft,
+  ChevronRight,
   Code2,
   Columns2,
   FileCode2,
@@ -74,6 +76,7 @@ export function ReviewPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [selected, setSelected] = useState(params.entryId);
+  const [selectedSourceEntryId, setSelectedSourceEntryId] = useState<string>();
   const [grouping, setGrouping] = useState<"family" | "test">("family");
   const [filter, setFilter] = useState("");
   const [status, setStatus] = useState<string>();
@@ -104,6 +107,32 @@ export function ReviewPage() {
     queryFn: () => api.review(params.sessionId, reviewEntryId as string),
     enabled: Boolean(reviewEntryId),
   });
+  const sourceOccurrences =
+    activeNode?.kind === "family" ? (review.data?.occurrences ?? []) : [];
+  const selectedSourceOccurrence =
+    sourceOccurrences.find(
+      (occurrence) => occurrence.entryId === selectedSourceEntryId,
+    ) ?? sourceOccurrences[0];
+  const sourceOccurrenceIndex = Math.max(
+    0,
+    sourceOccurrences.indexOf(
+      selectedSourceOccurrence as (typeof sourceOccurrences)[number],
+    ),
+  );
+  const sourceReviewEntryId = selectedSourceOccurrence?.entryId;
+  const occurrenceReview = useQuery({
+    queryKey: ["occurrence-review", params.sessionId, sourceReviewEntryId],
+    queryFn: () => api.review(params.sessionId, sourceReviewEntryId as string),
+    enabled: Boolean(
+      activeNode?.kind === "family" &&
+        sourceReviewEntryId &&
+        sourceReviewEntryId !== reviewEntryId,
+    ),
+  });
+  const displayedSource =
+    activeNode?.kind === "family" && sourceReviewEntryId !== reviewEntryId
+      ? occurrenceReview.data?.source
+      : review.data?.source;
   const live = useStore(liveStore, (value) => value);
   const liveProgress =
     live.sessionId === params.sessionId ? live.progress : undefined;
@@ -114,6 +143,7 @@ export function ReviewPage() {
     if (previousSessionId.current === params.sessionId) return;
     previousSessionId.current = params.sessionId;
     setSelected(undefined);
+    setSelectedSourceEntryId(undefined);
     setFilter("");
     setStatus(undefined);
   }, [params.sessionId]);
@@ -148,7 +178,10 @@ export function ReviewPage() {
     [nodes.data, filter],
   );
   useEffect(() => {
-    if (!selected && list[0]) setSelected(list[0].id);
+    if (!selected && list[0]) {
+      setSelected(list[0].id);
+      setSelectedSourceEntryId(undefined);
+    }
   }, [list, selected]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -202,7 +235,7 @@ export function ReviewPage() {
     [activeNode, visibleEntryIds],
   );
   const linkedBlocks =
-    review.data?.source.blocks.filter((block) => block.kind !== "test") ?? [];
+    displayedSource?.blocks.filter((block) => block.kind !== "test") ?? [];
   const linkedHookCount = linkedBlocks.filter((block) =>
     ["beforeAll", "beforeEach", "afterEach", "afterAll"].includes(block.kind),
   ).length;
@@ -286,6 +319,7 @@ export function ReviewPage() {
             )
           ]?.id,
         );
+        setSelectedSourceEntryId(undefined);
       }
     };
     addEventListener("keydown", handler);
@@ -448,6 +482,7 @@ export function ReviewPage() {
                   if (!value) return;
                   setGrouping(value as "family" | "test");
                   setSelected(undefined);
+                  setSelectedSourceEntryId(undefined);
                 }}
                 className="w-full"
               >
@@ -511,7 +546,10 @@ export function ReviewPage() {
                           : "border-l-transparent hover:bg-accent/50"
                       }`}
                       style={{ transform: `translateY(${row.start}px)` }}
-                      onClick={() => setSelected(node.id)}
+                      onClick={() => {
+                        setSelected(node.id);
+                        setSelectedSourceEntryId(undefined);
+                      }}
                     >
                       <span
                         className={`size-2 shrink-0 rounded-full ${decisionTone(node.decision)}`}
@@ -716,30 +754,99 @@ export function ReviewPage() {
                   ) : null}
 
                   <section className="source-preview overflow-hidden rounded-lg border bg-card">
-                    <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5">
+                    <div className="flex flex-col items-stretch justify-between gap-3 border-b px-4 py-2.5 sm:flex-row sm:items-center">
                       <div className="min-w-0">
                         <div className="text-sm font-medium">
                           {activeNode?.kind === "family"
-                            ? "Representative test source"
+                            ? "Affected test source"
                             : "Test source"}
                         </div>
                         <div className="truncate font-mono text-xs text-muted-foreground">
-                          {review.data.source.relativePath}
+                          {displayedSource?.relativePath ??
+                            selectedSourceOccurrence?.test.file}
                         </div>
                       </div>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {[
-                          linkedContextCount
-                            ? `${linkedContextCount} context block${linkedContextCount === 1 ? "" : "s"}`
-                            : null,
-                          linkedHookCount
-                            ? `${linkedHookCount} linked hook${linkedHookCount === 1 ? "" : "s"}`
-                            : null,
-                          "read only",
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </span>
+                      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
+                        {sourceOccurrences.length > 1 ? (
+                          <fieldset
+                            className="source-occurrence-selector m-0 flex min-w-0 items-center gap-1 border-0 p-0"
+                            aria-label="Affected test source navigation"
+                          >
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="size-8 shrink-0"
+                              aria-label="Previous affected test"
+                              disabled={sourceOccurrenceIndex <= 0}
+                              onClick={() => {
+                                setSelectedSourceEntryId(
+                                  sourceOccurrences[sourceOccurrenceIndex - 1]
+                                    ?.entryId,
+                                );
+                              }}
+                            >
+                              <ChevronLeft />
+                            </Button>
+                            <select
+                              aria-label="Affected test source"
+                              className="h-8 min-w-0 max-w-80 flex-1 rounded-md border bg-background px-2 text-xs shadow-xs sm:w-72"
+                              value={selectedSourceOccurrence?.entryId ?? ""}
+                              onChange={(event) =>
+                                setSelectedSourceEntryId(event.target.value)
+                              }
+                            >
+                              {sourceOccurrences.map((occurrence, index) => (
+                                <option
+                                  key={occurrence.entryId}
+                                  value={occurrence.entryId}
+                                >
+                                  {index + 1}.{" "}
+                                  {occurrence.test.name ??
+                                    occurrence.test.file ??
+                                    "Affected test"}
+                                </option>
+                              ))}
+                            </select>
+                            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                              {sourceOccurrenceIndex + 1}/
+                              {sourceOccurrences.length}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="size-8 shrink-0"
+                              aria-label="Next affected test"
+                              disabled={
+                                sourceOccurrenceIndex >=
+                                sourceOccurrences.length - 1
+                              }
+                              onClick={() => {
+                                setSelectedSourceEntryId(
+                                  sourceOccurrences[sourceOccurrenceIndex + 1]
+                                    ?.entryId,
+                                );
+                              }}
+                            >
+                              <ChevronRight />
+                            </Button>
+                          </fieldset>
+                        ) : null}
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {[
+                            linkedContextCount
+                              ? `${linkedContextCount} context block${linkedContextCount === 1 ? "" : "s"}`
+                              : null,
+                            linkedHookCount
+                              ? `${linkedHookCount} linked hook${linkedHookCount === 1 ? "" : "s"}`
+                              : null,
+                            "read only",
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      </div>
                     </div>
                     <Suspense
                       fallback={
@@ -748,10 +855,21 @@ export function ReviewPage() {
                         </div>
                       }
                     >
-                      <SourceCodeView
-                        source={review.data.source}
-                        theme={resolvedTheme}
-                      />
+                      {displayedSource ? (
+                        <SourceCodeView
+                          source={displayedSource}
+                          theme={resolvedTheme}
+                        />
+                      ) : occurrenceReview.isError ? (
+                        <div className="flex min-h-32 items-center justify-center px-4 text-sm text-destructive">
+                          Could not load this affected test source.
+                        </div>
+                      ) : (
+                        <div className="flex min-h-32 items-center justify-center gap-2 text-sm text-muted-foreground">
+                          <LoaderCircle className="size-4 animate-spin" />
+                          Loading affected test source…
+                        </div>
+                      )}
                     </Suspense>
                   </section>
 
