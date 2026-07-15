@@ -656,8 +656,24 @@ function linkedSourceBlocks(
       },
     ];
   });
-  const suiteItems = reportedSuites.length > 0 ? reportedSuites : lexicalSuites;
-  const innermostSuite = suiteItems.at(-1);
+  const combinedSuites = [...reportedSuites, ...lexicalSuites].filter(
+    (suite, index, suites) =>
+      suites.findIndex((candidate) => candidate.offset === suite.offset) ===
+      index,
+  );
+  const lexicalInnermostSuite = lexicalSuites.at(-1);
+  const containingReportedSuite = reportedSuites
+    .filter((suite) => suite.offset < test.offset && suite.end > testEnd)
+    .at(-1);
+  const innermostSuite = lexicalInnermostSuite ?? containingReportedSuite;
+  const suiteItems = innermostSuite
+    ? [
+        ...combinedSuites.filter(
+          (suite) => suite.offset !== innermostSuite.offset,
+        ),
+        innermostSuite,
+      ]
+    : combinedSuites;
   const fullInnermostSuite = Boolean(
     innermostSuite &&
       innermostSuite.offset < test.offset &&

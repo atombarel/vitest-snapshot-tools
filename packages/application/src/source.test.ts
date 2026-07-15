@@ -379,4 +379,60 @@ describe.each([{ kind: "authorisation" }])(
       located.blocks.map((block) => block.content).join("\n"),
     ).not.toContain('from "./shared-tests"');
   });
+
+  it("shows the full lexical suite surrounding a common-test registrar", () => {
+    const content = `const makeCommonTests = (getContext) => {
+  describe("common request tests", () => registerTests(getContext));
+};
+
+describe.each([{ role: "authorisation" }])("for $role", ({ role }) => {
+  beforeEach(async () => {
+    await prepareContext(role);
+  });
+
+  makeCommonTests(() => context);
+
+  afterEach(() => cleanupContext());
+});
+`;
+    const located = locateTestSource(content, "src/account.test.ts", {
+      snapshotFile: "src/__snapshots__/account.test.ts.snap",
+      snapshotKind: "external",
+      snapshotKey: "for authorisation > common request tests > logs request 1",
+      matcher: "toMatchSnapshot",
+      changeType: "modified",
+      ordinal: 1,
+      test: {
+        name: "for authorisation > common request tests > logs request",
+        location: { line: 10, column: 3 },
+        suites: [
+          {
+            id: "suite_parameterized",
+            name: "for authorisation",
+            location: { line: 5, column: 1 },
+          },
+          {
+            id: "suite_common",
+            name: "common request tests",
+            location: { line: 2, column: 3 },
+          },
+        ],
+      },
+    });
+
+    expect(located.blocks.map((block) => block.kind)).toEqual([
+      "suite",
+      "suite",
+    ]);
+    expect(located.blocks[0]).toMatchObject({ startLine: 2, endLine: 2 });
+    expect(located.blocks[0]?.content).toContain(
+      'describe("common request tests"',
+    );
+    expect(located.blocks[1]).toMatchObject({ startLine: 5, endLine: 13 });
+    expect(located.blocks[1]?.content).toContain("beforeEach(async () => {");
+    expect(located.blocks[1]?.content).toContain(
+      "makeCommonTests(() => context);",
+    );
+    expect(located.blocks[1]?.content).toContain("afterEach(() =>");
+  });
 });
