@@ -674,18 +674,18 @@ function linkedSourceBlocks(
         innermostSuite,
       ]
     : combinedSuites;
-  const fullInnermostSuite = Boolean(
+  const expandedInnermostSuite = Boolean(
     innermostSuite &&
       innermostSuite.offset < test.offset &&
       innermostSuite.end > testEnd,
   );
   const suites = suiteItems.map((suite, index) =>
-    fullInnermostSuite && index === suiteItems.length - 1
+    expandedInnermostSuite && index === suiteItems.length - 1
       ? blockFromLines(
           content,
           "suite",
           suite.block.startLine,
-          lineAt(content, suite.end),
+          lineAt(content, testEnd),
         )
       : suite.block,
   );
@@ -723,10 +723,10 @@ function linkedSourceBlocks(
     .filter((hook) => hook.kind === "beforeAll" || hook.kind === "beforeEach")
     .filter(
       (hook) =>
-        !fullInnermostSuite ||
+        !expandedInnermostSuite ||
         !innermostSuite ||
         hook.offset < innermostSuite.offset ||
-        hook.offset > innermostSuite.end,
+        hook.offset > testEnd,
     )
     .sort(
       (left, right) =>
@@ -737,10 +737,10 @@ function linkedSourceBlocks(
     .filter((hook) => hook.kind === "afterEach" || hook.kind === "afterAll")
     .filter(
       (hook) =>
-        !fullInnermostSuite ||
+        !expandedInnermostSuite ||
         !innermostSuite ||
         hook.offset < innermostSuite.offset ||
-        hook.offset > innermostSuite.end,
+        hook.offset > testEnd,
     )
     .sort(
       (left, right) =>
@@ -750,7 +750,7 @@ function linkedSourceBlocks(
   return [
     ...suites,
     ...before,
-    ...(fullInnermostSuite
+    ...(expandedInnermostSuite
       ? []
       : [blockFromLines(content, "test", test.line, lineAt(content, testEnd))]),
     ...after,
