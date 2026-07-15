@@ -51,7 +51,11 @@ export function SourceCodeView({ source, theme }: SourceCodeViewProps) {
                   line(node, line) {
                     const originalLine = block.startLine + line - 1;
                     node.properties["data-line-number"] = originalLine;
-                    if (block.kind === "test")
+                    if (
+                      block.kind === "test" ||
+                      (originalLine >= source.focus.startLine &&
+                        originalLine <= source.focus.endLine)
+                    )
                       node.properties["data-test-line"] = "";
                     if (originalLine === source.focus.testLine)
                       node.properties["data-test-start"] = "";

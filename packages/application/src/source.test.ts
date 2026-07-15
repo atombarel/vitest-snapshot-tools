@@ -28,21 +28,15 @@ describe("test source location", () => {
     expect(located.blocks).toEqual([
       {
         kind: "suite",
-        content: 'describe("account", () => {',
-        startLine: 1,
-        endLine: 1,
-      },
-      {
-        kind: "test",
         content:
-          '  it("renders profile", () => {\n    expect({ id: 1 }).toMatchSnapshot("profile");\n    expect({ role: "admin" }).toMatchSnapshot("permissions");\n  });',
-        startLine: 2,
-        endLine: 5,
+          'describe("account", () => {\n  it("renders profile", () => {\n    expect({ id: 1 }).toMatchSnapshot("profile");\n    expect({ role: "admin" }).toMatchSnapshot("permissions");\n  });\n});',
+        startLine: 1,
+        endLine: 6,
       },
     ]);
   });
 
-  it("includes parent hooks but excludes hooks and tests from sibling scopes", () => {
+  it("shows the full innermost suite while excluding sibling scopes", () => {
     const content = `beforeEach(() => setupRoot());
 afterEach(() => cleanupRoot());
 describe("sibling", () => {
@@ -72,9 +66,6 @@ describe("account", () => {
     expect(located.blocks.map((block) => block.kind)).toEqual([
       "suite",
       "beforeEach",
-      "beforeEach",
-      "test",
-      "afterEach",
       "afterEach",
     ]);
     const reviewSource = located.blocks
@@ -83,8 +74,8 @@ describe("account", () => {
     expect(reviewSource).toContain("setupRoot");
     expect(reviewSource).toContain("setupAccount");
     expect(reviewSource).toContain('it("renders profile"');
+    expect(reviewSource).toContain("renders another test");
     expect(reviewSource).not.toContain("setupSibling");
-    expect(reviewSource).not.toContain("renders another test");
   });
 
   it("includes imports, nested suites, and suite-level hooks", () => {
@@ -114,10 +105,9 @@ describe("api", () => {
       "suite",
       "suite",
       "beforeAll",
-      "beforeEach",
-      "test",
-      "afterAll",
     ]);
+    expect(located.blocks[1]?.content).toContain("resetAccount");
+    expect(located.blocks[1]?.content).toContain("stopAccount");
   });
 
   it("matches a raw file snapshot by its target filename", () => {
@@ -163,8 +153,8 @@ describe("api", () => {
       startLine: 3,
       endLine: 5,
     });
-    expect(located.blocks).toHaveLength(2);
-    expect(located.blocks[1]?.content).toContain('it("renders profile"');
+    expect(located.blocks).toHaveLength(1);
+    expect(located.blocks[0]?.content).toContain('it("renders profile"');
   });
 
   it("uses the matcher to recover source without test metadata", () => {
@@ -258,13 +248,12 @@ describe("snapshot in one", () => {
     expect(located.blocks.map((block) => block.kind)).toEqual([
       "suite",
       "suite",
-      "test",
     ]);
     expect(located.blocks[0]?.content).toContain('describe("snapshot in one"');
     expect(located.blocks[1]?.content).toContain(
       'describe("authentications for authorisation"',
     );
-    expect(located.blocks[2]?.content).toContain('captureSnapshot("target")');
+    expect(located.blocks[1]?.content).toContain('captureSnapshot("target")');
     expect(
       located.blocks.map((block) => block.content).join("\n"),
     ).not.toContain('captureSnapshot("wrong")');
@@ -319,15 +308,14 @@ describe.each([
     expect(located.blocks.map((block) => block.kind)).toEqual([
       "suite",
       "suite",
-      "test",
     ]);
     expect(located.blocks[0]?.content).toContain("describe.each");
     expect(located.blocks[0]?.content).toContain('"authentications for $kind"');
     expect(located.blocks[1]?.content).toContain('describe("snapshot in one"');
-    expect(located.blocks[2]?.content).toContain(
+    expect(located.blocks[1]?.content).toContain(
       'logsRequest("should have called partners"',
     );
-    expect(located.blocks[2]?.content).not.toContain("const logsRequest");
+    expect(located.blocks[1]?.content).not.toContain("const logsRequest");
   });
 
   it("uses the runtime callsite when an imported helper owns the test and matcher", () => {
@@ -380,12 +368,11 @@ describe.each([{ kind: "authorisation" }])(
     expect(located.blocks.map((block) => block.kind)).toEqual([
       "suite",
       "suite",
-      "test",
     ]);
     expect(located.blocks[0]?.content).toContain("describe.each");
     expect(located.blocks[1]?.content).toContain('describe("snapshot in one"');
-    expect(located.blocks[2]?.content).toContain("registerLogRequest({");
-    expect(located.blocks[2]?.content).toContain(
+    expect(located.blocks[1]?.content).toContain("registerLogRequest({");
+    expect(located.blocks[1]?.content).toContain(
       'title: "should have called partners"',
     );
     expect(

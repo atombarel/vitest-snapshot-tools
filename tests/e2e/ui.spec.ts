@@ -19,7 +19,7 @@ test.beforeAll(async () => {
   ).id;
 });
 
-test("shows one exact test block above both of its snapshot chunks", async ({
+test("shows the full innermost suite above both snapshot chunks", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1920, height: 900 });
@@ -43,19 +43,19 @@ test("shows one exact test block above both of its snapshot chunks", async ({
   await expect(
     page.getByText("src/request-review.test.ts", { exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByText("1 context block · 2 linked hooks · read only"),
-  ).toBeVisible();
+  await expect(page.getByText("1 context block · read only")).toBeVisible();
   await expect(page.locator(".source-block.imports")).toHaveCount(0);
   await expect(page.locator(".source-block.suite")).toContainText(
     'describe("demo API request review"',
   );
-  await expect(page.locator(".source-block.beforeEach")).toContainText(
+  await expect(page.locator(".source-block.suite")).toContainText(
     "completedRequestIds = []",
   );
-  await expect(page.locator(".source-block.afterEach")).toContainText(
+  await expect(page.locator(".source-block.suite")).toContainText(
     "toHaveLength(1)",
   );
+  await expect(page.locator(".source-block.beforeEach")).toHaveCount(0);
+  await expect(page.locator(".source-block.afterEach")).toHaveCount(0);
   await expect(page.locator("[data-matcher-line]")).toHaveCount(2);
   const chunks = page.locator(".snapshot-chunk");
   await expect(chunks).toHaveCount(2);
@@ -68,7 +68,7 @@ test("shows one exact test block above both of its snapshot chunks", async ({
   await expect(page.locator(".source-code")).toContainText(
     'it("lists active customers"',
   );
-  await expect(page.locator(".source-code")).not.toContainText(
+  await expect(page.locator(".source-code")).toContainText(
     'it("creates an invoice"',
   );
   await expect(page.locator(".snapshot-context")).toHaveCount(0);

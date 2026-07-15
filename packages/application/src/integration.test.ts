@@ -284,12 +284,11 @@ describe("transactional integration", () => {
     expect(source.blocks.map((block) => block.kind)).toEqual([
       "suite",
       "suite",
-      "test",
     ]);
     expect(source.blocks[0]?.content).toContain("describe.each");
     expect(source.blocks[1]?.content).toContain('describe("snapshot in one"');
-    expect(source.blocks[2]?.content).toContain("registerLogRequest({");
-    expect(source.blocks[2]?.content).toContain(
+    expect(source.blocks[1]?.content).toContain("registerLogRequest({");
+    expect(source.blocks[1]?.content).toContain(
       'title: "should have called partners"',
     );
     expect(source.focus.matcherLine).toBeUndefined();
