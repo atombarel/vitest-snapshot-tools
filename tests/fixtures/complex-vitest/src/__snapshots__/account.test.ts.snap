@@ -1,0 +1,15 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`authentications for 'authentication' > snapshot in one > should have called partners 1`] = `
+{
+  "kind": "authentication",
+  "state": "baseline",
+}
+`;
+
+exports[`authentications for 'authorisation' > snapshot in one > should have called partners 1`] = `
+{
+  "kind": "authorisation",
+  "state": "baseline",
+}
+`;

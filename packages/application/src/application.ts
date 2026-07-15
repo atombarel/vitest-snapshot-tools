@@ -597,6 +597,34 @@ export function createSnapshotApplication(
         typeof location.column === "number"
           ? { line: location.line, column: location.column }
           : undefined;
+      const testSuites = Array.isArray(testEvent?.payload.suites)
+        ? testEvent.payload.suites.flatMap((value) => {
+            if (!value || typeof value !== "object") return [];
+            const id = "id" in value ? value.id : undefined;
+            const name = "name" in value ? value.name : undefined;
+            if (typeof id !== "string" || typeof name !== "string") return [];
+            const suiteLocation =
+              "location" in value &&
+              value.location &&
+              typeof value.location === "object" &&
+              "line" in value.location &&
+              "column" in value.location &&
+              typeof value.location.line === "number" &&
+              typeof value.location.column === "number"
+                ? {
+                    line: value.location.line,
+                    column: value.location.column,
+                  }
+                : undefined;
+            return [
+              {
+                id,
+                name,
+                ...(suiteLocation ? { location: suiteLocation } : {}),
+              },
+            ];
+          })
+        : undefined;
       const diff = await entryDiff(session, entry);
       const hasTestContext = Boolean(
         file.testId || file.testFile || testName || entry.testName,
@@ -636,6 +664,7 @@ export function createSnapshotApplication(
                     ? { durationMs: testEvent.payload.durationMs }
                     : {}),
                   ...(testLocation ? { location: testLocation } : {}),
+                  ...(testSuites?.length ? { suites: testSuites } : {}),
                   ...(Array.isArray(testEvent?.payload.failures)
                     ? { failureCount: testEvent.payload.failures.length }
                     : {}),
@@ -758,6 +787,108 @@ export function createSnapshotApplication(
           sources.flatMap((source) => source.focus.matcherLines ?? []),
         ),
       ].sort((left, right) => left - right);
+      const familyIndex = exactFamilyIndex(index);
+      const selectedFamilyHash = familyIndex.hashByEntry.get(input.entryId);
+      const familyEntries = selectedFamilyHash
+        ? index.entries.filter(
+            (entry) =>
+              familyIndex.hashByEntry.get(entry.id) === selectedFamilyHash,
+          )
+        : index.entries.filter((entry) => entry.id === input.entryId);
+      const filesById = new Map(index.files.map((file) => [file.id, file]));
+      const finishedTests = (await store.readEvents(session)).filter(
+        (event) => event.type === "test.finished",
+      );
+      const finishedTestsById = new Map<string, RunEvent[]>();
+      const finishedTestsByFile = new Map<string, RunEvent[]>();
+      for (const event of finishedTests) {
+        const eventId = String(event.payload.id ?? "");
+        const eventFile = String(event.payload.file ?? "");
+        if (eventId) {
+          const matches = finishedTestsById.get(eventId) ?? [];
+          matches.push(event);
+          finishedTestsById.set(eventId, matches);
+        }
+        if (eventFile) {
+          const matches = finishedTestsByFile.get(eventFile) ?? [];
+          matches.push(event);
+          finishedTestsByFile.set(eventFile, matches);
+        }
+      }
+      const occurrencesByTest = new Map<
+        string,
+        TestReview["occurrences"][number]
+      >();
+      for (const entry of familyEntries) {
+        const file = filesById.get(entry.fileId);
+        if (!file) continue;
+        const possibleTestEvents = file.testId
+          ? (finishedTestsById.get(file.testId) ?? [])
+          : file.testFile
+            ? (finishedTestsByFile.get(file.testFile) ?? [])
+            : finishedTests;
+        const testEvent = possibleTestEvents
+          .filter((event) => {
+            const eventId = String(event.payload.id ?? "");
+            const eventName = String(event.payload.name ?? "");
+            if (file.testId) return eventId === file.testId;
+            const nameMatches = Boolean(
+              entry.testName &&
+                eventName &&
+                (entry.testName === eventName ||
+                  entry.testName.startsWith(`${eventName} > `)),
+            );
+            return nameMatches;
+          })
+          .sort(
+            (left, right) =>
+              String(right.payload.name ?? "").length -
+              String(left.payload.name ?? "").length,
+          )[0];
+        const testName = testEvent?.payload.name
+          ? String(testEvent.payload.name)
+          : entry.testName?.replace(/ > [^>]+$/, "");
+        const testFile =
+          file.testFile ??
+          (testEvent?.payload.file
+            ? String(testEvent.payload.file)
+            : undefined);
+        const testId =
+          file.testId ??
+          (testEvent?.payload.id ? String(testEvent.payload.id) : undefined);
+        if (!testId && !testName && !testFile) continue;
+        const test = {
+          ...(testId ? { id: testId } : {}),
+          ...(testName ? { name: testName } : {}),
+          ...(testFile ? { file: testFile } : {}),
+        };
+        const identity =
+          test.id ??
+          stableId(
+            "test",
+            "review-occurrence",
+            test.file ?? file.relativePath,
+            test.name ?? entry.testName ?? entry.key,
+          );
+        const occurrence = occurrencesByTest.get(identity);
+        if (occurrence) {
+          occurrence.snapshotCount += 1;
+          if (entry.id === input.entryId) occurrence.entryId = entry.id;
+        } else {
+          occurrencesByTest.set(identity, {
+            entryId: entry.id,
+            test,
+            snapshotCount: 1,
+          });
+        }
+      }
+      const occurrences = [...occurrencesByTest.values()].sort(
+        (left, right) =>
+          Number(right.entryId === input.entryId) -
+            Number(left.entryId === input.entryId) ||
+          (left.test.file ?? "").localeCompare(right.test.file ?? "") ||
+          (left.test.name ?? "").localeCompare(right.test.name ?? ""),
+      );
       return {
         sessionId: input.sessionId,
         ...(selected.context.test ? { test: selected.context.test } : {}),
@@ -766,6 +897,7 @@ export function createSnapshotApplication(
           focus: { ...selectedSource.focus, matcherLines },
         },
         entries,
+        occurrences,
       };
     },
     async setDecision(input: SetDecisionInput): Promise<DecisionResult> {

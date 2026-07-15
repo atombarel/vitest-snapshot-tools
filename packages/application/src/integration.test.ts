@@ -107,6 +107,7 @@ describe("transactional integration", () => {
         name: "captures a value",
         file: "src/value.test.ts",
         status: "passed",
+        location: { line: 3 },
       },
     });
     const source = await app.getTestSource({
@@ -121,10 +122,7 @@ describe("transactional integration", () => {
     expect(source.content).toContain("toMatchSnapshot");
     expect(source.content).not.toContain("import { expect, it }");
     expect(source.content.trim()).toMatch(/^it\("captures a value"/);
-    expect(source.blocks.map((block) => block.kind)).toEqual([
-      "imports",
-      "test",
-    ]);
+    expect(source.blocks.map((block) => block.kind)).toEqual(["test"]);
     const review = await app.getTestReview({
       sessionId: session.id,
       entryId: entry.id,
@@ -241,5 +239,82 @@ describe("transactional integration", () => {
     expect(
       (await app.createPreview({ sessionId: inlineSession.id })).operations,
     ).toHaveLength(0);
+  }, 30_000);
+
+  it("locates helper-generated tests inside nested describe.each suites", async () => {
+    const fixtureSource = resolve("../../tests/fixtures/complex-vitest");
+    const fixtureParent = await mkdtemp(join(tmpdir(), "vsnap-complex-repo-"));
+    const fixture = join(fixtureParent, "project");
+    await cp(fixtureSource, fixture, { recursive: true });
+    await symlink(
+      resolve("../../node_modules"),
+      join(fixture, "node_modules"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const store = new SessionStore({
+      cacheRoot: await mkdtemp(join(tmpdir(), "vsnap-complex-cache-")),
+    });
+    const app = createSnapshotApplication({
+      store,
+      environmentPath: resolve("../runner/dist/environment.js"),
+    });
+
+    const session = await app.startRun({ repositoryRoot: fixture });
+    const index = await store.readIndex(session);
+    const entry = index.entries.find((candidate) =>
+      candidate.key.includes("authorisation"),
+    );
+    if (!entry) throw new Error("Expected the authorisation snapshot entry");
+    const diff = await app.getDiff({
+      sessionId: session.id,
+      entryId: entry.id,
+    });
+    expect(diff.context.test).toMatchObject({
+      name: "authentications for 'authorisation' > snapshot in one > should have called partners",
+      suites: [
+        { name: "authentications for 'authorisation'" },
+        { name: "snapshot in one" },
+      ],
+    });
+
+    const source = await app.getTestSource({
+      sessionId: session.id,
+      entryId: entry.id,
+    });
+    expect(source.blocks.map((block) => block.kind)).toEqual([
+      "suite",
+      "suite",
+    ]);
+    expect(source.blocks[0]?.content).toContain("describe.each");
+    expect(source.blocks[1]?.content).toContain('describe("snapshot in one"');
+    expect(source.blocks[1]?.content).toContain("registerLogRequest({");
+    expect(source.blocks[1]?.content).toContain(
+      'title: "should have called partners"',
+    );
+    expect(source.focus.matcherLine).toBeUndefined();
+    expect(
+      source.blocks.map((block) => block.content).join("\n"),
+    ).not.toContain("const logsRequest");
+    const review = await app.getTestReview({
+      sessionId: session.id,
+      entryId: entry.id,
+    });
+    expect(review.occurrences).toHaveLength(2);
+    expect(
+      review.occurrences.map((occurrence) => occurrence.test.name),
+    ).toEqual([
+      "authentications for 'authorisation' > snapshot in one > should have called partners",
+      "authentications for 'authentication' > snapshot in one > should have called partners",
+    ]);
+    expect(
+      review.occurrences.map((occurrence) => occurrence.snapshotCount),
+    ).toEqual([1, 1]);
+    const otherOccurrence = review.occurrences[1];
+    if (!otherOccurrence) throw new Error("Expected another affected test");
+    const otherSource = await app.getTestSource({
+      sessionId: session.id,
+      entryId: otherOccurrence.entryId,
+    });
+    expect(otherSource.blocks[0]?.content).toContain("describe.each");
   }, 30_000);
 });

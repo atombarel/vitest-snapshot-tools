@@ -28,21 +28,15 @@ describe("test source location", () => {
     expect(located.blocks).toEqual([
       {
         kind: "suite",
-        content: 'describe("account", () => {',
-        startLine: 1,
-        endLine: 1,
-      },
-      {
-        kind: "test",
         content:
-          '  it("renders profile", () => {\n    expect({ id: 1 }).toMatchSnapshot("profile");\n    expect({ role: "admin" }).toMatchSnapshot("permissions");\n  });',
-        startLine: 2,
-        endLine: 5,
+          'describe("account", () => {\n  it("renders profile", () => {\n    expect({ id: 1 }).toMatchSnapshot("profile");\n    expect({ role: "admin" }).toMatchSnapshot("permissions");\n  });\n});',
+        startLine: 1,
+        endLine: 6,
       },
     ]);
   });
 
-  it("includes parent hooks but excludes hooks and tests from sibling scopes", () => {
+  it("shows the full innermost suite while excluding sibling scopes", () => {
     const content = `beforeEach(() => setupRoot());
 afterEach(() => cleanupRoot());
 describe("sibling", () => {
@@ -72,9 +66,6 @@ describe("account", () => {
     expect(located.blocks.map((block) => block.kind)).toEqual([
       "suite",
       "beforeEach",
-      "beforeEach",
-      "test",
-      "afterEach",
       "afterEach",
     ]);
     const reviewSource = located.blocks
@@ -83,8 +74,8 @@ describe("account", () => {
     expect(reviewSource).toContain("setupRoot");
     expect(reviewSource).toContain("setupAccount");
     expect(reviewSource).toContain('it("renders profile"');
+    expect(reviewSource).toContain("renders another test");
     expect(reviewSource).not.toContain("setupSibling");
-    expect(reviewSource).not.toContain("renders another test");
   });
 
   it("includes imports, nested suites, and suite-level hooks", () => {
@@ -111,17 +102,12 @@ describe("api", () => {
       test: { name: "api > account > renders profile" },
     });
     expect(located.blocks.map((block) => block.kind)).toEqual([
-      "imports",
       "suite",
       "suite",
       "beforeAll",
-      "beforeEach",
-      "test",
-      "afterAll",
     ]);
-    expect(located.blocks.map((block) => block.content).join("\n")).toContain(
-      'import { createAccount } from "./fixtures"',
-    );
+    expect(located.blocks[1]?.content).toContain("resetAccount");
+    expect(located.blocks[1]?.content).toContain("stopAccount");
   });
 
   it("matches a raw file snapshot by its target filename", () => {
@@ -137,5 +123,316 @@ describe("api", () => {
         test: { name: "writes status" },
       }).focus,
     ).toMatchObject({ testLine: 1, matcherLine: 2 });
+  });
+
+  it("recovers the test when Vitest reports the matcher line", () => {
+    const content = `describe("account", () => {
+  // The snapshot assertion is intentionally below the declaration.
+  it("renders profile", () => {
+    expect({ id: 1 }).toMatchSnapshot("profile");
+  });
+});
+`;
+    const located = locateTestSource(content, "src/account.test.ts", {
+      snapshotFile: "src/__snapshots__/account.test.ts.snap",
+      snapshotKind: "external",
+      snapshotKey: "account > renders profile > profile 1",
+      matcher: "toMatchSnapshot",
+      snapshotName: "profile",
+      changeType: "modified",
+      ordinal: 1,
+      test: {
+        name: "account > renders profile",
+        location: { line: 4, column: 5 },
+      },
+    });
+
+    expect(located.focus).toMatchObject({
+      testLine: 3,
+      matcherLine: 4,
+      startLine: 3,
+      endLine: 5,
+    });
+    expect(located.blocks).toHaveLength(1);
+    expect(located.blocks[0]?.content).toContain('it("renders profile"');
+  });
+
+  it("uses the matcher to recover source without test metadata", () => {
+    const content = `it("renders profile", () => {
+  expect({ id: 1 }).toMatchSnapshot("profile");
+});
+`;
+    const located = locateTestSource(content, "src/account.test.ts", {
+      snapshotFile: "src/__snapshots__/account.test.ts.snap",
+      snapshotKind: "external",
+      snapshotKey: "renders profile > profile 1",
+      matcher: "toMatchSnapshot",
+      snapshotName: "profile",
+      changeType: "modified",
+      ordinal: 1,
+    });
+
+    expect(located.focus).toMatchObject({
+      testLine: 1,
+      matcherLine: 2,
+      startLine: 1,
+      endLine: 3,
+    });
+    expect(located.blocks[0]?.content).toContain('it("renders profile"');
+  });
+
+  it("ignores matcher examples in comments when recovering source", () => {
+    const content = `// Example: expect(profile).toMatchSnapshot("profile");
+it("renders profile", () => {
+  expect({ id: 1 }).toMatchSnapshot("profile");
+});
+`;
+    const located = locateTestSource(content, "src/account.test.ts", {
+      snapshotFile: "src/__snapshots__/account.test.ts.snap",
+      snapshotKind: "external",
+      snapshotKey: "renders profile > profile 1",
+      matcher: "toMatchSnapshot",
+      snapshotName: "profile",
+      changeType: "modified",
+      ordinal: 1,
+    });
+
+    expect(located.focus).toMatchObject({
+      testLine: 2,
+      matcherLine: 3,
+      startLine: 2,
+      endLine: 4,
+    });
+    expect(located.blocks).toEqual([
+      {
+        kind: "test",
+        content:
+          'it("renders profile", () => {\n  expect({ id: 1 }).toMatchSnapshot("profile");\n});',
+        startLine: 2,
+        endLine: 4,
+      },
+    ]);
+  });
+
+  it("matches a known test title across nested describes", () => {
+    const content = `/* eslint-disable no-console */
+describe("snapshot in one", () => {
+  describe("authentications for authentication", () => {
+    it("should have called partners", () => captureSnapshot("wrong"));
+  });
+  describe("authentications for authorisation", () => {
+    it("should have called partners", () => {
+      captureSnapshot("target");
+    });
+  });
+});
+`;
+    const located = locateTestSource(content, "src/account.test.ts", {
+      snapshotFile: "src/__snapshots__/account.test.ts.snap",
+      snapshotKind: "external",
+      snapshotKey:
+        "snapshot in one > authentications for authorisation > should have called partners 1",
+      matcher: "toMatchSnapshot",
+      changeType: "modified",
+      ordinal: 1,
+      test: {
+        name: "snapshot in one > authentications for authorisation > should have called partners",
+      },
+    });
+
+    expect(located.focus).toMatchObject({
+      testLine: 7,
+      startLine: 7,
+      endLine: 9,
+    });
+    expect(located.blocks.map((block) => block.kind)).toEqual([
+      "suite",
+      "suite",
+    ]);
+    expect(located.blocks[0]?.content).toContain('describe("snapshot in one"');
+    expect(located.blocks[1]?.content).toContain(
+      'describe("authentications for authorisation"',
+    );
+    expect(located.blocks[1]?.content).toContain('captureSnapshot("target")');
+    expect(
+      located.blocks.map((block) => block.content).join("\n"),
+    ).not.toContain('captureSnapshot("wrong")');
+  });
+
+  it("uses runtime suite locations for describe.each tests registered by a helper", () => {
+    const content = `const logsRequest = (title, run) => it(title, run);
+
+describe.each([
+  { kind: "authentication" },
+  { kind: "authorisation" },
+])("authentications for $kind", ({ kind }) => {
+  describe("snapshot in one", () => {
+    logsRequest("should have called partners", () => {
+      expect({ kind }).toMatchSnapshot();
+    });
+  });
+});
+`;
+    const located = locateTestSource(content, "src/account.test.ts", {
+      snapshotFile: "src/__snapshots__/account.test.ts.snap",
+      snapshotKind: "external",
+      snapshotKey:
+        "authentications for authorisation > snapshot in one > should have called partners 1",
+      matcher: "toMatchSnapshot",
+      changeType: "modified",
+      ordinal: 1,
+      test: {
+        name: "authentications for authorisation > snapshot in one > should have called partners",
+        location: { line: 1, column: 37 },
+        suites: [
+          {
+            id: "suite_each",
+            name: "authentications for authorisation",
+            location: { line: 3, column: 1 },
+          },
+          {
+            id: "suite_nested",
+            name: "snapshot in one",
+            location: { line: 7, column: 3 },
+          },
+        ],
+      },
+    });
+
+    expect(located.focus).toMatchObject({
+      testLine: 8,
+      matcherLine: 9,
+      startLine: 8,
+      endLine: 10,
+    });
+    expect(located.blocks.map((block) => block.kind)).toEqual([
+      "suite",
+      "suite",
+    ]);
+    expect(located.blocks[0]?.content).toContain("describe.each");
+    expect(located.blocks[0]?.content).toContain('"authentications for $kind"');
+    expect(located.blocks[1]?.content).toContain('describe("snapshot in one"');
+    expect(located.blocks[1]?.content).toContain(
+      'logsRequest("should have called partners"',
+    );
+    expect(located.blocks[1]?.content).not.toContain("const logsRequest");
+  });
+
+  it("uses the runtime callsite when an imported helper owns the test and matcher", () => {
+    const content = `import { registerLogRequest } from "./shared-tests";
+
+describe.each([{ kind: "authorisation" }])(
+  "authentications for $kind",
+  ({ kind }) => {
+    describe("snapshot in one", () => {
+      registerLogRequest({
+        title: "should have called partners",
+        run: () => executeRequest(kind),
+      });
+    });
+  },
+);
+`;
+    const located = locateTestSource(content, "src/account.test.ts", {
+      snapshotFile: "src/__snapshots__/account.test.ts.snap",
+      snapshotKind: "external",
+      snapshotKey:
+        "authentications for authorisation > snapshot in one > should have called partners 1",
+      matcher: "toMatchSnapshot",
+      changeType: "modified",
+      ordinal: 1,
+      test: {
+        name: "authentications for authorisation > snapshot in one > should have called partners",
+        location: { line: 7, column: 7 },
+        suites: [
+          {
+            id: "suite_each",
+            name: "authentications for authorisation",
+            location: { line: 3, column: 1 },
+          },
+          {
+            id: "suite_nested",
+            name: "snapshot in one",
+            location: { line: 6, column: 5 },
+          },
+        ],
+      },
+    });
+
+    expect(located.focus).toMatchObject({
+      testLine: 7,
+      startLine: 7,
+      endLine: 10,
+    });
+    expect(located.focus.matcherLine).toBeUndefined();
+    expect(located.blocks.map((block) => block.kind)).toEqual([
+      "suite",
+      "suite",
+    ]);
+    expect(located.blocks[0]?.content).toContain("describe.each");
+    expect(located.blocks[1]?.content).toContain('describe("snapshot in one"');
+    expect(located.blocks[1]?.content).toContain("registerLogRequest({");
+    expect(located.blocks[1]?.content).toContain(
+      'title: "should have called partners"',
+    );
+    expect(
+      located.blocks.map((block) => block.content).join("\n"),
+    ).not.toContain('from "./shared-tests"');
+  });
+
+  it("shows the full lexical suite surrounding a common-test registrar", () => {
+    const content = `const makeCommonTests = (getContext) => {
+  describe("common request tests", () => registerTests(getContext));
+};
+
+describe.each([{ role: "authorisation" }])("for $role", ({ role }) => {
+  beforeEach(async () => {
+    await prepareContext(role);
+  });
+
+  makeCommonTests(() => context);
+
+  afterEach(() => cleanupContext());
+});
+`;
+    const located = locateTestSource(content, "src/account.test.ts", {
+      snapshotFile: "src/__snapshots__/account.test.ts.snap",
+      snapshotKind: "external",
+      snapshotKey: "for authorisation > common request tests > logs request 1",
+      matcher: "toMatchSnapshot",
+      changeType: "modified",
+      ordinal: 1,
+      test: {
+        name: "for authorisation > common request tests > logs request",
+        location: { line: 10, column: 3 },
+        suites: [
+          {
+            id: "suite_parameterized",
+            name: "for authorisation",
+            location: { line: 5, column: 1 },
+          },
+          {
+            id: "suite_common",
+            name: "common request tests",
+            location: { line: 2, column: 3 },
+          },
+        ],
+      },
+    });
+
+    expect(located.blocks.map((block) => block.kind)).toEqual([
+      "suite",
+      "suite",
+    ]);
+    expect(located.blocks[0]).toMatchObject({ startLine: 2, endLine: 2 });
+    expect(located.blocks[0]?.content).toContain(
+      'describe("common request tests"',
+    );
+    expect(located.blocks[1]).toMatchObject({ startLine: 5, endLine: 13 });
+    expect(located.blocks[1]?.content).toContain("beforeEach(async () => {");
+    expect(located.blocks[1]?.content).toContain(
+      "makeCommonTests(() => context);",
+    );
+    expect(located.blocks[1]?.content).toContain("afterEach(() =>");
   });
 });

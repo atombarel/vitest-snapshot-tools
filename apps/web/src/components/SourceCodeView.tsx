@@ -34,20 +34,7 @@ const blockLabels: Record<TestSource["blocks"][number]["kind"], string> = {
 export function SourceCodeView({ source, theme }: SourceCodeViewProps) {
   const [html, setHtml] = useState<string[]>([]);
   const container = useRef<HTMLDivElement>(null);
-  const blocks = useMemo(
-    () =>
-      source.blocks.length
-        ? source.blocks
-        : [
-            {
-              kind: "test" as const,
-              content: source.content,
-              startLine: source.focus.startLine,
-              endLine: source.focus.endLine,
-            },
-          ],
-    [source],
-  );
+  const blocks = useMemo(() => source.blocks, [source.blocks]);
 
   useEffect(() => {
     let active = true;
@@ -64,7 +51,11 @@ export function SourceCodeView({ source, theme }: SourceCodeViewProps) {
                   line(node, line) {
                     const originalLine = block.startLine + line - 1;
                     node.properties["data-line-number"] = originalLine;
-                    if (block.kind === "test")
+                    if (
+                      block.kind === "test" ||
+                      (originalLine >= source.focus.startLine &&
+                        originalLine <= source.focus.endLine)
+                    )
                       node.properties["data-test-line"] = "";
                     if (originalLine === source.focus.testLine)
                       node.properties["data-test-start"] = "";
@@ -94,6 +85,16 @@ export function SourceCodeView({ source, theme }: SourceCodeViewProps) {
       ?.querySelector("[data-matcher-line]")
       ?.scrollIntoView({ block: "center" });
   }, [html]);
+
+  if (blocks.length === 0)
+    return (
+      <section className="source-view" aria-label="Read-only test source">
+        <div className="flex min-h-24 items-center justify-center px-4 text-sm text-muted-foreground">
+          Exact test source unavailable. Rerun this review to capture its
+          location.
+        </div>
+      </section>
+    );
 
   return (
     <section className="source-view" aria-label="Read-only test source">
