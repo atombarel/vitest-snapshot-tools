@@ -43,7 +43,7 @@ import {
   RERUN_PROGRESS_WARNING,
   useProgressLossWarning,
 } from "../review-progress.js";
-import { matcherInvocation } from "../snapshot-context.js";
+import { matcherInvocation, snapshotTitle } from "../snapshot-context.js";
 import { beginLiveSession, liveStore, reduceProgress } from "../store.js";
 import { nextThemeMode, parseThemeMode, resolveTheme } from "../theme.js";
 
@@ -797,8 +797,7 @@ export function ReviewPage() {
                         <header className="flex items-center justify-between gap-3 border-b bg-muted/40 px-4 py-2.5">
                           <div className="flex min-w-0 flex-col gap-0.5">
                             <span className="truncate text-sm font-medium">
-                              {item.entry.context.snapshotName ??
-                                `Snapshot ${index + 1}`}
+                              {snapshotTitle(item.entry.context, index + 1)}
                             </span>
                             <code className="truncate font-mono text-xs text-muted-foreground">
                               {matcherInvocation(item.entry.context)}
