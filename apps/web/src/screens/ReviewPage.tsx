@@ -38,7 +38,12 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip.js";
 import { inferSnapshotLanguage } from "../diff-language.js";
-import { matcherInvocation } from "../snapshot-context.js";
+import {
+  hasUnappliedReviewProgress,
+  RERUN_PROGRESS_WARNING,
+  useProgressLossWarning,
+} from "../review-progress.js";
+import { matcherInvocation, snapshotTitle } from "../snapshot-context.js";
 import { beginLiveSession, liveStore, reduceProgress } from "../store.js";
 import { nextThemeMode, parseThemeMode, resolveTheme } from "../theme.js";
 
@@ -98,6 +103,14 @@ export function ReviewPage() {
     queryFn: () => api.nodes(params.sessionId, grouping, status),
     refetchInterval: 2000,
   });
+  const progressNodes = useQuery({
+    queryKey: ["nodes", params.sessionId, "family", undefined],
+    queryFn: () => api.nodes(params.sessionId, "family"),
+    refetchInterval: 2000,
+  });
+  const hasUnappliedProgress = hasUnappliedReviewProgress(
+    progressNodes.data?.items ?? [],
+  );
   const activeNode = (nodes.data?.items ?? []).find(
     (node) => node.id === selected || node.entryId === selected,
   );
@@ -254,6 +267,11 @@ export function ReviewPage() {
     () => (activeNode?.kind === "family" ? [activeNode.id] : visibleEntryIds),
     [activeNode, visibleEntryIds],
   );
+  const selectedIndex = list.findIndex(
+    (item) => item.id === selected || item.entryId === selected,
+  );
+  const nextReviewId =
+    selectedIndex >= 0 ? list[selectedIndex + 1]?.id : undefined;
   const linkedBlocks =
     displayedSource?.blocks.filter((block) => block.kind !== "test") ?? [];
   const linkedHookCount = linkedBlocks.filter((block) =>
@@ -267,6 +285,7 @@ export function ReviewPage() {
     }: {
       selectors: string[];
       decision: "accepted" | "rejected";
+      nextReviewId?: string;
     }) =>
       selectors.reduce<Promise<unknown>>(
         (pending, selector) =>
@@ -280,13 +299,19 @@ export function ReviewPage() {
           ),
         Promise.resolve(),
       ),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["nodes", params.sessionId],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ["review", params.sessionId],
-      });
+    onSuccess: async (_result, variables) => {
+      if (variables.nextReviewId) {
+        setSelected(variables.nextReviewId);
+        setSelectedSourceEntryId(undefined);
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["nodes", params.sessionId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["review", params.sessionId],
+        }),
+      ]);
     },
     onError: (error) => toast.error(error.message),
   });
@@ -312,6 +337,10 @@ export function ReviewPage() {
     },
     onError: (error) => toast.error(error.message),
   });
+  const startRerun = () => {
+    if (hasUnappliedProgress && !window.confirm(RERUN_PROGRESS_WARNING)) return;
+    rerun.mutate();
+  };
   const cancel = useMutation({
     mutationFn: () => api.cancel(params.sessionId),
     onSuccess: () =>
@@ -320,13 +349,24 @@ export function ReviewPage() {
       }),
     onError: (error) => toast.error(error.message),
   });
+  useProgressLossWarning(
+    hasUnappliedProgress || decide.isPending || apply.isPending,
+  );
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (!selected || event.target instanceof HTMLInputElement) return;
       if (event.key === "a")
-        decide.mutate({ selectors: decisionSelectors, decision: "accepted" });
+        decide.mutate({
+          selectors: decisionSelectors,
+          decision: "accepted",
+          ...(nextReviewId ? { nextReviewId } : {}),
+        });
       if (event.key === "r")
-        decide.mutate({ selectors: decisionSelectors, decision: "rejected" });
+        decide.mutate({
+          selectors: decisionSelectors,
+          decision: "rejected",
+          ...(nextReviewId ? { nextReviewId } : {}),
+        });
       if (event.key === "j" || event.key === "k") {
         const index = list.findIndex(
           (item) => item.id === selected || item.entryId === selected,
@@ -344,7 +384,7 @@ export function ReviewPage() {
     };
     addEventListener("keydown", handler);
     return () => removeEventListener("keydown", handler);
-  }, [selected, list, decisionSelectors, decide.mutate]);
+  }, [selected, list, decisionSelectors, nextReviewId, decide.mutate]);
   const active = ["created", "collecting", "running", "cancelling"].includes(
     session.data?.state ?? "",
   );
@@ -464,8 +504,10 @@ export function ReviewPage() {
               <Button
                 variant="outline"
                 size="sm"
-                disabled={rerun.isPending}
-                onClick={() => rerun.mutate()}
+                disabled={
+                  rerun.isPending || apply.isPending || decide.isPending
+                }
+                onClick={startRerun}
               >
                 {rerun.isPending ? (
                   <LoaderCircle className="animate-spin" />
@@ -677,6 +719,7 @@ export function ReviewPage() {
                     decide.mutate({
                       selectors: decisionSelectors,
                       decision: "rejected",
+                      ...(nextReviewId ? { nextReviewId } : {}),
                     })
                   }
                 >
@@ -691,6 +734,7 @@ export function ReviewPage() {
                     decide.mutate({
                       selectors: decisionSelectors,
                       decision: "accepted",
+                      ...(nextReviewId ? { nextReviewId } : {}),
                     })
                   }
                 >
@@ -730,6 +774,68 @@ export function ReviewPage() {
             <div className="diff-scroll min-h-0 flex-1 overflow-auto bg-muted/20 p-4">
               {review.data ? (
                 <div className="review-content flex w-full flex-col gap-4">
+                  <section
+                    className="flex flex-col gap-3"
+                    aria-label="Snapshot chunks generated by this test"
+                  >
+                    <div className="flex items-center justify-between gap-3 px-1">
+                      <div className="text-sm font-medium">
+                        {activeNode?.kind === "family"
+                          ? "Representative snapshot change"
+                          : "Snapshot changes"}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {renderedEntries.length} chunk
+                        {renderedEntries.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    {renderedEntries.map((item, index) => (
+                      <article
+                        className="snapshot-chunk overflow-hidden rounded-lg border bg-card"
+                        key={item.entry.entryId}
+                      >
+                        <header className="flex items-center justify-between gap-3 border-b bg-muted/40 px-4 py-2.5">
+                          <div className="flex min-w-0 flex-col gap-0.5">
+                            <span className="truncate text-sm font-medium">
+                              {snapshotTitle(item.entry.context, index + 1)}
+                            </span>
+                            <code className="truncate font-mono text-xs text-muted-foreground">
+                              {matcherInvocation(item.entry.context)}
+                            </code>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            {item.language === "json" ? (
+                              <Badge variant="outline">JSON</Badge>
+                            ) : null}
+                            <span
+                              className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase ${changeTone(item.entry.context.changeType)}`}
+                            >
+                              {item.entry.context.changeType}
+                            </span>
+                          </div>
+                        </header>
+                        <FileDiff
+                          fileDiff={item.fileDiff}
+                          options={{
+                            diffStyle: layout,
+                            theme: {
+                              dark: "one-dark-pro",
+                              light: "github-light",
+                            },
+                            lineDiffType:
+                              Math.max(
+                                item.entry.baseline.length,
+                                item.entry.candidate.length,
+                              ) > 500_000
+                                ? "none"
+                                : "word-alt",
+                            hunkSeparators: "line-info",
+                          }}
+                        />
+                      </article>
+                    ))}
+                  </section>
+
                   {activeNode?.kind === "family" ? (
                     <section className="family-summary flex items-center justify-between gap-4 rounded-lg border bg-card p-4">
                       <div className="min-w-0">
@@ -897,69 +1003,6 @@ export function ReviewPage() {
                         </div>
                       )}
                     </Suspense>
-                  </section>
-
-                  <section
-                    className="flex flex-col gap-3"
-                    aria-label="Snapshot chunks generated by this test"
-                  >
-                    <div className="flex items-center justify-between gap-3 px-1">
-                      <div className="text-sm font-medium">
-                        {activeNode?.kind === "family"
-                          ? "Representative snapshot change"
-                          : "Snapshot changes"}
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        {renderedEntries.length} chunk
-                        {renderedEntries.length === 1 ? "" : "s"}
-                      </span>
-                    </div>
-                    {renderedEntries.map((item, index) => (
-                      <article
-                        className="snapshot-chunk overflow-hidden rounded-lg border bg-card"
-                        key={item.entry.entryId}
-                      >
-                        <header className="flex items-center justify-between gap-3 border-b bg-muted/40 px-4 py-2.5">
-                          <div className="flex min-w-0 flex-col gap-0.5">
-                            <span className="truncate text-sm font-medium">
-                              {item.entry.context.snapshotName ??
-                                `Snapshot ${index + 1}`}
-                            </span>
-                            <code className="truncate font-mono text-xs text-muted-foreground">
-                              {matcherInvocation(item.entry.context)}
-                            </code>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-2">
-                            {item.language === "json" ? (
-                              <Badge variant="outline">JSON</Badge>
-                            ) : null}
-                            <span
-                              className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase ${changeTone(item.entry.context.changeType)}`}
-                            >
-                              {item.entry.context.changeType}
-                            </span>
-                          </div>
-                        </header>
-                        <FileDiff
-                          fileDiff={item.fileDiff}
-                          options={{
-                            diffStyle: layout,
-                            theme: {
-                              dark: "one-dark-pro",
-                              light: "github-light",
-                            },
-                            lineDiffType:
-                              Math.max(
-                                item.entry.baseline.length,
-                                item.entry.candidate.length,
-                              ) > 500_000
-                                ? "none"
-                                : "word-alt",
-                            hunkSeparators: "line-info",
-                          }}
-                        />
-                      </article>
-                    ))}
                   </section>
                 </div>
               ) : review.isError ? (

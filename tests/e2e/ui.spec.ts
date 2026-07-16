@@ -19,7 +19,7 @@ test.beforeAll(async () => {
   ).id;
 });
 
-test("shows selected suite context above both snapshot chunks", async ({
+test("shows selected suite context for both snapshot chunks", async ({
   page,
 }) => {
   const requestedReviewEntries = new Set<string>();
@@ -229,6 +229,41 @@ test("shows selected suite context above both snapshot chunks", async ({
 
   await page.getByRole("button", { name: /theme: system/i }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+});
+
+test("puts the snapshot first, advances decisions, and protects progress", async ({
+  page,
+}) => {
+  const reviewUrl = new URL(`/runs/${sessionId}/review`, server.url);
+  reviewUrl.hash = new URL(server.url).hash;
+  await page.goto(reviewUrl.toString());
+
+  const rows = page.locator(".tree-row");
+  expect(await rows.count()).toBeGreaterThan(1);
+  await rows.first().click();
+  await expect(page.locator(".snapshot-chunk").first()).toBeVisible();
+  const snapshotComesFirst = await page.evaluate(() => {
+    const snapshot = document.querySelector(".snapshot-chunk");
+    const source = document.querySelector(".source-preview");
+    if (!snapshot || !source) throw new Error("Review content is incomplete");
+    return Boolean(
+      snapshot.compareDocumentPosition(source) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+  expect(snapshotComesFirst).toBe(true);
+
+  await page.getByRole("button", { name: /^Accept/ }).click();
+  await expect(rows.nth(1)).toHaveClass(/bg-accent/);
+
+  const clickRerun = page.getByRole("button", { name: "Rerun" }).click();
+  const dialog = await page.waitForEvent("dialog");
+  expect(dialog.message()).toContain(
+    "accepted and rejected decisions haven't been applied",
+  );
+  await dialog.dismiss();
+  await clickRerun;
+  await expect(page).toHaveURL(new RegExp(`/runs/${sessionId}/review`));
 });
 
 test.afterAll(async () => server.close());

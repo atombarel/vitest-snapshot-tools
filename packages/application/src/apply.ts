@@ -31,6 +31,35 @@ interface ApplyJournal {
   entries: JournalEntry[];
 }
 
+async function mapConcurrent<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  visit: (value: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let next = 0;
+  let failed = false;
+  let failure: unknown;
+  const worker = async (): Promise<void> => {
+    while (!failed && next < values.length) {
+      const index = next++;
+      const value = values[index];
+      if (value === undefined) continue;
+      try {
+        results[index] = await visit(value);
+      } catch (error) {
+        failed = true;
+        failure = error;
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, values.length) }, worker),
+  );
+  if (failed) throw failure;
+  return results;
+}
+
 async function currentHash(path: string): Promise<string | null> {
   return readFile(path)
     .then((content) => sha256(content))
@@ -72,9 +101,10 @@ export async function applyFilesystemPlan(
   const directory = store.sessionDirectory(session);
   const journalPath = join(directory, "apply-journal.json");
   await recoverApplyJournal(session, store);
-  const entries: JournalEntry[] = [];
+  let entries: JournalEntry[] = [];
+  const preparedEntries: JournalEntry[] = [];
   try {
-    for (const operation of plan.operations) {
+    entries = await mapConcurrent(plan.operations, 16, async (operation) => {
       const target = await assertSafeApplyTarget(
         session.repositoryRoot,
         operation.relativePath,
@@ -102,30 +132,36 @@ export async function applyFilesystemPlan(
         started: false,
         completed: false,
       };
-      entries.push(entry);
-      if (operation.type !== "delete") {
-        await mkdir(dirname(target), { recursive: true });
-        const content = await store.readBlob(session, operation.contentBlob);
-        if (content === undefined)
-          throw new VsnapError(
-            "MISSING_BLOB",
-            `Missing prepared content for ${operation.relativePath}`,
-          );
-        entry.temporary = `${target}.${process.pid}.${plan.id}.tmp`;
-        await writeFile(entry.temporary, content, {
-          mode: operation.type === "update" ? operation.mode : 0o644,
-        });
-        // Windows requires a writable handle for FlushFileBuffers/fsync.
-        const handle = await open(entry.temporary, "r+");
-        try {
-          await handle.sync();
-        } finally {
-          await handle.close();
+      try {
+        if (operation.type !== "delete") {
+          await mkdir(dirname(target), { recursive: true });
+          const content = await store.readBlob(session, operation.contentBlob);
+          if (content === undefined)
+            throw new VsnapError(
+              "MISSING_BLOB",
+              `Missing prepared content for ${operation.relativePath}`,
+            );
+          entry.temporary = `${target}.${process.pid}.${plan.id}.tmp`;
+          await writeFile(entry.temporary, content, {
+            mode: operation.type === "update" ? operation.mode : 0o644,
+          });
+          // Windows requires a writable handle for FlushFileBuffers/fsync.
+          const handle = await open(entry.temporary, "r+");
+          try {
+            await handle.sync();
+          } finally {
+            await handle.close();
+          }
         }
+        preparedEntries.push(entry);
+        return entry;
+      } catch (error) {
+        if (entry.temporary) await rm(entry.temporary, { force: true });
+        throw error;
       }
-    }
+    });
   } catch (error) {
-    for (const entry of entries)
+    for (const entry of preparedEntries)
       if (entry.temporary) await rm(entry.temporary, { force: true });
     throw error;
   }
@@ -139,7 +175,6 @@ export async function applyFilesystemPlan(
   const written: string[] = [];
   try {
     journal = { ...journal, state: "writing" };
-    await atomicWrite(journalPath, JSON.stringify(journal, null, 2));
     for (const entry of entries) {
       const { operation, target } = entry;
       entry.started = true;
@@ -157,7 +192,6 @@ export async function applyFilesystemPlan(
       }
       entry.completed = true;
       written.push(operation.relativePath);
-      await atomicWrite(journalPath, JSON.stringify(journal, null, 2));
     }
     journal.state = "complete";
     await atomicWrite(journalPath, JSON.stringify(journal, null, 2));

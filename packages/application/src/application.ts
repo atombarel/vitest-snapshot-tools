@@ -18,6 +18,7 @@ import type {
   EntryContent,
   EntryContentInput,
   EntryDiff,
+  FileOperation,
   GetDiffInput,
   GetTestReviewInput,
   GetTestSourceInput,
@@ -64,6 +65,42 @@ export interface SnapshotApplicationOptions extends SessionStoreOptions {
   environmentPath?: string;
 }
 
+interface SynthesizedFile {
+  relativePath: string;
+  baseline: string | null;
+  accepted: string | null;
+  remaining: string | null;
+}
+
+async function mapConcurrent<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  visit: (value: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let next = 0;
+  let failed = false;
+  let failure: unknown;
+  const worker = async (): Promise<void> => {
+    while (!failed && next < values.length) {
+      const index = next++;
+      const value = values[index];
+      if (value === undefined) continue;
+      try {
+        results[index] = await visit(value);
+      } catch (error) {
+        failed = true;
+        failure = error;
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, values.length) }, worker),
+  );
+  if (failed) throw failure;
+  return results;
+}
+
 export function createSnapshotApplication(
   options: SnapshotApplicationOptions = {},
 ): SnapshotApplication {
@@ -98,15 +135,35 @@ export function createSnapshotApplication(
   async function entryValues(
     session: ReviewSession,
     entry: StoredReviewEntry,
+    blobReads?: Map<string, Promise<string | undefined>>,
   ): Promise<{ baseline: string; candidate: string }> {
+    const readBlob = (hash?: string) => {
+      if (!hash) return Promise.resolve(undefined);
+      const cached = blobReads?.get(hash);
+      if (cached) return cached;
+      const pending = store.readBlob(session, hash);
+      blobReads?.set(hash, pending);
+      return pending;
+    };
+    const [baseline, candidate] = await Promise.all([
+      readBlob(entry.baselineBlob),
+      readBlob(entry.candidateBlob),
+    ]);
     return {
-      baseline: (await store.readBlob(session, entry.baselineBlob)) ?? "",
-      candidate: (await store.readBlob(session, entry.candidateBlob)) ?? "",
+      baseline: baseline ?? "",
+      candidate: candidate ?? "",
     };
   }
-  async function entryDiff(session: ReviewSession, entry: StoredReviewEntry) {
-    const values = await entryValues(session, entry);
-    const decisions = await store.readDecisions(session);
+  async function entryDiff(
+    session: ReviewSession,
+    entry: StoredReviewEntry,
+    knownDecisions?: Awaited<ReturnType<SessionStore["readDecisions"]>>,
+    blobReads?: Map<string, Promise<string | undefined>>,
+  ) {
+    const [values, decisions] = await Promise.all([
+      entryValues(session, entry, blobReads),
+      knownDecisions ?? store.readDecisions(session),
+    ]);
     return createEntryDiff(
       entry.id,
       values.baseline,
@@ -148,36 +205,53 @@ export function createSnapshotApplication(
     throw new VsnapError("INVALID_SELECTOR", `Unknown selector: ${selector}`);
   }
 
-  async function synthesizedFiles(session: ReviewSession): Promise<
-    Array<{
-      relativePath: string;
-      baseline: string | null;
-      accepted: string | null;
-      remaining: string | null;
-    }>
-  > {
-    const index = await store.readIndex(session);
-    const result = [];
-    for (const file of index.files) {
-      if (file.kind === "inline-unsupported") continue;
+  async function synthesizedFiles(
+    session: ReviewSession,
+    index: ReviewIndex,
+    decisions: Awaited<ReturnType<SessionStore["readDecisions"]>>,
+  ): Promise<SynthesizedFile[]> {
+    const files = index.files.filter(
+      (file) => file.kind !== "inline-unsupported",
+    );
+    const supportedFileIds = new Set(files.map((file) => file.id));
+    const entriesByFile = new Map<string, StoredReviewEntry[]>();
+    for (const entry of index.entries) {
+      if (!supportedFileIds.has(entry.fileId)) continue;
+      const entries = entriesByFile.get(entry.fileId);
+      if (entries) entries.push(entry);
+      else entriesByFile.set(entry.fileId, [entry]);
+    }
+    const blobReads = new Map<string, Promise<string | undefined>>();
+    const diffEntries = await mapConcurrent(
+      index.entries.filter((entry) => supportedFileIds.has(entry.fileId)),
+      16,
+      async (entry) =>
+        [
+          entry.id,
+          await entryDiff(session, entry, decisions, blobReads),
+        ] as const,
+    );
+    const diffs = new Map(diffEntries);
+    return mapConcurrent(files, 16, async (file) => {
       const absolute = `${session.repositoryRoot}/${file.relativePath}`;
-      const baseline =
-        (await readOverlay(
-          store.sessionDirectory(session),
-          "baseline",
-          absolute,
-        )) ?? null;
-      const candidate =
-        (await readOverlay(
-          store.sessionDirectory(session),
-          "candidate",
-          absolute,
-        )) ?? null;
-      const entries = index.entries.filter((entry) => entry.fileId === file.id);
+      const [baselineOverlay, candidateOverlay] = await Promise.all([
+        readOverlay(store.sessionDirectory(session), "baseline", absolute),
+        file.parseMode === "opaque"
+          ? readOverlay(store.sessionDirectory(session), "candidate", absolute)
+          : undefined,
+      ]);
+      const baseline = baselineOverlay ?? null;
+      const candidate = candidateOverlay ?? null;
+      const entries = entriesByFile.get(file.id) ?? [];
       const acceptedValues = new Map<string, string | null>();
       const remainingValues = new Map<string, string | null>();
       for (const entry of entries) {
-        const diff = await entryDiff(session, entry);
+        const diff = diffs.get(entry.id);
+        if (!diff)
+          throw new VsnapError(
+            "MISSING_DIFF",
+            `No prepared diff exists for ${entry.id}`,
+          );
         const acceptedText = applyAcceptedHunks(diff);
         const remainingText = applyAcceptedHunks({
           ...diff,
@@ -205,20 +279,20 @@ export function createSnapshotApplication(
               : remainingText,
         );
       }
+      const first = entries[0];
+      const firstDiff = first ? diffs.get(first.id) : undefined;
       const accepted =
         file.parseMode === "opaque"
-          ? entries[0]
-            ? applyAcceptedHunks(await entryDiff(session, entries[0]))
+          ? firstDiff
+            ? applyAcceptedHunks(firstDiff)
             : baseline
           : synthesizeSnapshotFile(baseline, acceptedValues);
       let remaining: string | null;
       if (file.parseMode === "opaque") {
-        const first = entries[0];
-        const diff = first ? await entryDiff(session, first) : null;
-        remaining = diff
+        remaining = firstDiff
           ? applyAcceptedHunks({
-              ...diff,
-              hunks: diff.hunks.map((hunk) => ({
+              ...firstDiff,
+              hunks: firstDiff.hunks.map((hunk) => ({
                 ...hunk,
                 decision: hunk.decision === "rejected" ? "pending" : "accepted",
               })),
@@ -226,18 +300,101 @@ export function createSnapshotApplication(
           : candidate;
         if (
           file.candidateHash === null &&
-          diff?.hunks.every((h) => h.decision !== "rejected")
+          firstDiff?.hunks.every((h) => h.decision !== "rejected")
         )
           remaining = null;
       } else remaining = synthesizeSnapshotFile(baseline, remainingValues);
-      result.push({
+      return {
         relativePath: file.relativePath,
         baseline,
         accepted,
         remaining,
-      });
-    }
-    return result;
+      };
+    });
+  }
+
+  async function prepareApply(
+    session: ReviewSession,
+    expectedRevision?: number,
+  ): Promise<{
+    plan: ApplyPlan;
+    index: ReviewIndex;
+    synthesized: SynthesizedFile[];
+  }> {
+    if (expectedRevision !== undefined && expectedRevision !== session.revision)
+      throw new VsnapError("STALE_REVISION", "Session revision changed");
+    const [index, decisions] = await Promise.all([
+      store.readIndex(session),
+      store.readDecisions(session),
+    ]);
+    const synthesized = await synthesizedFiles(session, index, decisions);
+    const prepared = await mapConcurrent(synthesized, 16, async (file) => {
+      if (file.accepted === file.baseline) return { patch: "" };
+      const patch = unifiedFilePatch(
+        file.relativePath,
+        file.baseline ?? "",
+        file.accepted ?? "",
+      );
+      let operation: FileOperation;
+      if (file.baseline === null && file.accepted !== null) {
+        operation = {
+          type: "create",
+          relativePath: file.relativePath,
+          expectedHash: null,
+          contentBlob: await store.writeBlob(session, file.accepted),
+        };
+      } else if (file.accepted === null && file.baseline !== null) {
+        operation = {
+          type: "delete",
+          relativePath: file.relativePath,
+          expectedHash: sha256(file.baseline),
+        };
+      } else if (file.accepted !== null && file.baseline !== null) {
+        const [contentBlob, mode] = await Promise.all([
+          store.writeBlob(session, file.accepted),
+          stat(`${session.repositoryRoot}/${file.relativePath}`)
+            .then((value) => value.mode)
+            .catch(() => undefined),
+        ]);
+        operation = {
+          type: "update",
+          relativePath: file.relativePath,
+          expectedHash: sha256(file.baseline),
+          contentBlob,
+          ...(mode === undefined ? {} : { mode }),
+        };
+      } else {
+        throw new VsnapError(
+          "INVALID_APPLY_PLAN",
+          `Could not prepare ${file.relativePath}`,
+        );
+      }
+      return { patch, operation };
+    });
+    const patch = prepared.map((value) => value.patch).join("");
+    return {
+      index,
+      synthesized,
+      plan: {
+        id: stableId("plan", session.id, session.revision, patch),
+        sessionId: session.id,
+        expectedRevision: session.revision,
+        createdAt: clock().toISOString(),
+        operations: prepared.flatMap((value) =>
+          value.operation ? [value.operation] : [],
+        ),
+        acceptedHunks: index.hunks
+          .filter((h) => decisions[h.id] === "accepted")
+          .map((h) => h.id),
+        rejectedHunks: index.hunks
+          .filter((h) => decisions[h.id] === "rejected")
+          .map((h) => h.id),
+        pendingHunks: index.hunks
+          .filter((h) => !decisions[h.id] || decisions[h.id] === "pending")
+          .map((h) => h.id),
+        patch,
+      },
+    };
   }
 
   const application: SnapshotApplication = {
@@ -953,81 +1110,16 @@ export function createSnapshotApplication(
     },
     async createPreview(input: CreatePreviewInput): Promise<ApplyPlan> {
       const session = await store.load(input.sessionId);
-      if (
-        input.expectedRevision !== undefined &&
-        input.expectedRevision !== session.revision
-      )
-        throw new VsnapError("STALE_REVISION", "Session revision changed");
-      const index = await store.readIndex(session);
-      const decisions = await store.readDecisions(session);
-      const operations = [];
-      let patch = "";
-      for (const file of await synthesizedFiles(session)) {
-        if (file.accepted === file.baseline) continue;
-        const contentBlob =
-          file.accepted === null
-            ? undefined
-            : await store.writeBlob(session, file.accepted);
-        const mode = await stat(
-          `${session.repositoryRoot}/${file.relativePath}`,
-        )
-          .then((value) => value.mode)
-          .catch(() => undefined);
-        if (file.baseline === null && contentBlob)
-          operations.push({
-            type: "create" as const,
-            relativePath: file.relativePath,
-            expectedHash: null,
-            contentBlob,
-          });
-        else if (file.accepted === null && file.baseline !== null)
-          operations.push({
-            type: "delete" as const,
-            relativePath: file.relativePath,
-            expectedHash: sha256(file.baseline),
-          });
-        else if (contentBlob && file.baseline !== null)
-          operations.push({
-            type: "update" as const,
-            relativePath: file.relativePath,
-            expectedHash: sha256(file.baseline),
-            contentBlob,
-            ...(mode === undefined ? {} : { mode }),
-          });
-        patch += unifiedFilePatch(
-          file.relativePath,
-          file.baseline ?? "",
-          file.accepted ?? "",
-        );
-      }
-      return {
-        id: stableId("plan", session.id, session.revision, patch),
-        sessionId: session.id,
-        expectedRevision: session.revision,
-        createdAt: clock().toISOString(),
-        operations,
-        acceptedHunks: index.hunks
-          .filter((h) => decisions[h.id] === "accepted")
-          .map((h) => h.id),
-        rejectedHunks: index.hunks
-          .filter((h) => decisions[h.id] === "rejected")
-          .map((h) => h.id),
-        pendingHunks: index.hunks
-          .filter((h) => !decisions[h.id] || decisions[h.id] === "pending")
-          .map((h) => h.id),
-        patch,
-      };
+      return (await prepareApply(session, input.expectedRevision)).plan;
     },
     async apply(input: ApplyInput): Promise<ApplyResult> {
       const unlockedSession = await store.load(input.sessionId);
       return store.withSessionLock(unlockedSession, async () => {
         let session = await store.load(input.sessionId);
-        const plan = await application.createPreview({
-          sessionId: input.sessionId,
-          ...(input.expectedRevision === undefined
-            ? {}
-            : { expectedRevision: input.expectedRevision }),
-        });
+        const { plan, index, synthesized } = await prepareApply(
+          session,
+          input.expectedRevision,
+        );
         if (plan.acceptedHunks.length === 0 && plan.rejectedHunks.length === 0)
           return {
             code: "NO_DECISIONS",
@@ -1038,26 +1130,25 @@ export function createSnapshotApplication(
           };
         session = { ...session, state: "applying" };
         await store.save(session);
-        const oldHunks = (await store.readIndex(session)).hunks.map(
-          (h) => h.id,
-        );
-        const synthesized = await synthesizedFiles(session);
+        const oldHunks = index.hunks.map((h) => h.id);
         const written = await applyFilesystemPlan(session, plan, store);
-        for (const file of synthesized) {
+        await mapConcurrent(synthesized, 16, async (file) => {
           const absolute = `${session.repositoryRoot}/${file.relativePath}`;
-          await writeOverlay(
-            store.sessionDirectory(session),
-            "baseline",
-            absolute,
-            file.accepted,
-          );
-          await writeOverlay(
-            store.sessionDirectory(session),
-            "candidate",
-            absolute,
-            file.remaining,
-          );
-        }
+          await Promise.all([
+            writeOverlay(
+              store.sessionDirectory(session),
+              "baseline",
+              absolute,
+              file.accepted,
+            ),
+            writeOverlay(
+              store.sessionDirectory(session),
+              "candidate",
+              absolute,
+              file.remaining,
+            ),
+          ]);
+        });
         session = {
           ...session,
           revision: session.revision + 1,

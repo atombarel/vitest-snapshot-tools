@@ -2,7 +2,7 @@ import { cp, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { SessionStore } from "@vsnap/session";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createSnapshotApplication } from "./application.js";
 
 describe("transactional integration", () => {
@@ -207,10 +207,15 @@ describe("transactional integration", () => {
         selector: reviewEntry.entryId,
         decision: "accepted",
       });
+    const readDecisions = vi.spyOn(store, "readDecisions");
     const plan = await app.createPreview({ sessionId: session.id });
+    expect(readDecisions).toHaveBeenCalledTimes(1);
     expect(plan.patch).toContain("candidate");
     expect(await readFile(snapshot, "utf8")).toBe(before);
+    readDecisions.mockClear();
     const applied = await app.apply({ sessionId: session.id });
+    expect(readDecisions).toHaveBeenCalledTimes(2);
+    readDecisions.mockRestore();
     expect(applied.code).toBe("APPLIED");
     expect(await readFile(snapshot, "utf8")).toContain("candidate");
     const verified = await app.verify({ sessionId: session.id });
