@@ -279,20 +279,20 @@ export function createSnapshotApplication(
               : remainingText,
         );
       }
+      const first = entries[0];
+      const firstDiff = first ? diffs.get(first.id) : undefined;
       const accepted =
         file.parseMode === "opaque"
-          ? entries[0]
-            ? applyAcceptedHunks(diffs.get(entries[0].id))
+          ? firstDiff
+            ? applyAcceptedHunks(firstDiff)
             : baseline
           : synthesizeSnapshotFile(baseline, acceptedValues);
       let remaining: string | null;
       if (file.parseMode === "opaque") {
-        const first = entries[0];
-        const diff = first ? diffs.get(first.id) : undefined;
-        remaining = diff
+        remaining = firstDiff
           ? applyAcceptedHunks({
-              ...diff,
-              hunks: diff.hunks.map((hunk) => ({
+              ...firstDiff,
+              hunks: firstDiff.hunks.map((hunk) => ({
                 ...hunk,
                 decision: hunk.decision === "rejected" ? "pending" : "accepted",
               })),
@@ -300,7 +300,7 @@ export function createSnapshotApplication(
           : candidate;
         if (
           file.candidateHash === null &&
-          diff?.hunks.every((h) => h.decision !== "rejected")
+          firstDiff?.hunks.every((h) => h.decision !== "rejected")
         )
           remaining = null;
       } else remaining = synthesizeSnapshotFile(baseline, remainingValues);
